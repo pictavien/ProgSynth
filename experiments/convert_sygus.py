@@ -46,7 +46,10 @@ for file in glob.glob(folder + "*.sl"):
     )
     print("\t", tr)
     # constants
-    constants = {auto_type("int"): integer_literals, auto_type("str"): string_literals}
+    constants = {
+        auto_type("int"): integer_literals,
+        auto_type("string"): string_literals,
+    }
     # Create task
     task = Task[PBEWithConstants](
         tr,
