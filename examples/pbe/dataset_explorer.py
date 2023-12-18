@@ -3,6 +3,7 @@ from typing import Optional
 from colorama import Fore as F
 
 from synth import Dataset, PBE
+from synth.specification import PBEWithConstants
 from synth.syntax import CFG, Program
 from synth.task import Task
 
@@ -132,6 +133,9 @@ def task(*args: str) -> None:
         )
         print_value("\tOutput", example.output)
         print()
+    if isinstance(task.specification, PBEWithConstants):
+        for t, values in task.specification.constants.items():
+            print_value(f"Constant {t}", values)
     print_value("Metadata", task.metadata)
 
 
