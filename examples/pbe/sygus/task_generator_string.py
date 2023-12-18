@@ -38,13 +38,16 @@ from synth.generation import (
     UnionSampler,
 )
 
+np.random.seed(12)
+
 
 class StringTaskGenerator(TaskGenerator):
     def generate_program(self, type_request: Type) -> Tuple[Program, bool]:
         program, is_unique = super().generate_program(type_request)
-        n_strings = max(2, sum(super().sample_input([INT, INT])))
-        req = [STRING] * n_strings + [INT]
-        self.__constants = super().sample_input(req)  # type: ignore
+        if is_unique:
+            n_strings = max(2, sum(super().sample_input([INT, INT])))
+            req = [STRING] * n_strings + [INT]
+            self.__constants = super().sample_input(req)  # type: ignore
         if getattr(self, "mapping", None) is None:
             self.mapping: Dict[Type, TList[int]] = {INT: [], STRING: []}
 
@@ -256,7 +259,7 @@ def reproduce_string_dataset(
         ListSampler(
             LexiconSampler(str_lexicon, seed=seed),
             [(i + 4, probabilities[i]) for i in range(len(probabilities))],
-            max_depth=2,
+            max_depth=5,
             seed=seed,
         )
         .compose_with_type_mapper(lambda _: STR_list)
