@@ -51,7 +51,7 @@ for file in glob.glob(folder + "*.sl"):
     task = Task[PBEWithConstants](
         tr,
         specification=PBEWithConstants(examples, constants),
-        metadata={"src": task_name},
+        metadata={"name": task_name[:-3]},
     )
     tasks.append(task)
 

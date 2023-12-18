@@ -156,12 +156,10 @@ class ObsEq(DSLEvaluator):
             self.task.specification.constants
         ):
             failed = False
-            success = 0
             for ex in self.task.specification.examples:
                 out = self.evaluator.eval(prog, ex.inputs)
                 local_success = out == ex.output
                 failed |= not local_success
-                success += local_success
                 if isinstance(out, list):
                     outputs = (outputs, tuple(out))
                 else:
@@ -181,6 +179,10 @@ class ObsEq(DSLEvaluator):
             return None
         else:
             return self.evaluator.eval(self._success[program], input)
+
+    def clear_cache(self) -> None:
+        self._success = {}
+        return self.evaluator.clear_cache()
 
 
 # ================================
@@ -234,7 +236,8 @@ def enumerative_search(
     if start == 0:
         trace.append(["solved", "solution"] + stats_name)
     for task, pcfg in zip(tasks[start:], pcfgs[start:]):
-
+        if task.metadata.get("name", None) is not None:
+            pbar.set_description_str(task.metadata["name"])
         total += 1
         task_solved = False
         solution = None
