@@ -45,7 +45,7 @@ __semantics = {
     "+": lambda x: lambda y: x + y,
     "-": lambda x: lambda y: x - y,
     "len": lambda x: len(x),
-    "indexof": lambda x: lambda y: lambda pos: x.find(y, start=pos),
+    "indexof": lambda x: lambda y: lambda pos: x.find(y, pos),
     "firstindexof": lambda x: lambda y: x.find(y),
     "*": lambda x: lambda y: x * y,
     "%": lambda x: lambda y: x % y,
@@ -62,5 +62,6 @@ dsl.instantiate_polymorphic_types(1)
 evaluator = DSLEvaluator(dsl.instantiate_semantics(__semantics))
 evaluator.skip_exceptions.add(ZeroDivisionError)
 evaluator.skip_exceptions.add(ValueError)
+evaluator.skip_exceptions.add(TypeError)
 lexicon = list([chr(i) for i in range(32, 126)])
 constant_types = {auto_type("int"), auto_type("string")}
