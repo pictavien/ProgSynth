@@ -1,6 +1,9 @@
 from typing import (
+    Any,
+    Callable,
     Generator,
     Generic,
+    Optional,
     TypeVar,
     Union,
 )
@@ -31,7 +34,14 @@ class ProgramEnumerator(ABC, Generic[U]):
         pass
 
     def __iter__(self) -> Generator[Program, U, None]:
+        self.is_equiv: Optional[Callable[[Program], bool]] = None
         return self.generator()
+
+    def set_equiv_check(self, is_equiv: Callable[[Program], bool]) -> None:
+        self.is_equiv = is_equiv
+
+    def _check_equiv_(self, program: Program) -> bool:
+        return self.is_equiv is not None and self.is_equiv(program)
 
     @abstractmethod
     def programs_in_banks(self) -> int:

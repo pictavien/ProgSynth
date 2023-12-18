@@ -132,6 +132,9 @@ class BeePlusSearch(
     ) -> None:
         if new_program in self._deleted:
             return
+        if self._check_equiv_(new_program):
+            self._deleted.add(new_program)
+            return
         local_bank = self._bank[S]
         if cost_index not in local_bank:
             local_bank[cost_index] = []

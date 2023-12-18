@@ -199,7 +199,13 @@ class HSEnumerator(
                     new_arguments[i] = succ_sub_program
                     new_program = Function(F, new_arguments)
                     hash_new_program = hash(new_program)
-                    if hash_new_program not in self.hash_table_program[S]:
+                    if (
+                        hash_new_program not in self.hash_table_program[S]
+                        and hash_new_program not in self.deleted
+                    ):
+                        if self._check_equiv_(new_program):
+                            self.deleted.add(new_program)
+                            return
                         self.hash_table_program[S].add(hash_new_program)
                         try:
                             priority: Ordered = self.compute_priority(S, new_program)

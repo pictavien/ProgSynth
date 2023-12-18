@@ -176,6 +176,9 @@ class BeapSearch(
                 new_program = Function(element.P, list(new_args))
                 if new_program in self._deleted:
                     continue
+                if self._check_equiv_(new_program):
+                    self._deleted.add(new_program)
+                    continue
                 bank[cost_index].append(new_program)
                 yield new_program
 

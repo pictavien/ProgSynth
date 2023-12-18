@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import Any, Callable, Iterable, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 import csv
 
 import tqdm
@@ -10,7 +10,8 @@ from dsl_loader import add_dsl_choice_arg, load_DSL
 
 
 from synth import Dataset, PBE
-from synth.semantic.evaluator import DSLEvaluatorWithConstant
+from synth.semantic.evaluator import DSLEvaluator, DSLEvaluatorWithConstant
+from synth.specification import PBEWithConstants
 from synth.syntax import (
     ProbDetGrammar,
     ProbUGrammar,
@@ -23,7 +24,9 @@ from synth.syntax import (
     hs_enumerate_bucket_prob_grammar,
     hs_enumerate_bucket_prob_u_grammar,
     ProgramEnumerator,
+    Program,
 )
+from synth.task import Task
 from synth.utils import load_object
 from synth.pbe.solvers import (
     NaivePBESolver,
@@ -41,15 +44,15 @@ SOLVERS = {
     solver.name(): solver
     for solver in [NaivePBESolver, CutoffPBESolver, ObsEqPBESolver]
 }
-base_solvers = {x: y for x, y in SOLVERS.items()}
-for meta_solver in [RestartPBESolver]:
-    for name, solver in base_solvers.items():
-        SOLVERS[f"{meta_solver.name()}.{name}"] = lambda *args, **kwargs: meta_solver(
-            *args, solver_builder=solver, **kwargs
-        )
+# base_solvers = {x: y for x, y in SOLVERS.items()}
+# for meta_solver in [RestartPBESolver]:
+#     for name, solver in base_solvers.items():
+#         SOLVERS[f"{meta_solver.name()}.{name}"] = lambda *args, **kwargs: meta_solver(
+#             *args, solver_builder=solver, **kwargs
+#         )
 
 SEARCH_ALGOS = {
-    "beep_search": (bps_enumerate_prob_grammar, None),
+    "beap_search": (bps_enumerate_prob_grammar, None),
     "heap_search": (hs_enumerate_prob_grammar, hs_enumerate_prob_u_grammar),
     "bucket_search": (
         lambda x: hs_enumerate_bucket_prob_grammar(x, 3),
@@ -139,6 +142,39 @@ dataset_name = dataset_file[start_index : dataset_file.index(".", start_index)]
 
 supported_type_requests = Dataset.load(support).type_requests() if support else None
 
+
+class ObsEq:
+    def __init__(self, task: Task[PBEWithConstants], evaluator: DSLEvaluator) -> None:
+        self._results: Dict[Any, Any] = {}
+        self.task = task
+        self.evaluator = evaluator
+
+    def test_equivalent(self, program: Program) -> bool:
+        outputs = None
+        for prog in program.all_constants_instantiation(
+            self.task.specification.constants
+        ):
+            failed = False
+            success = 0
+            for ex in self.task.specification.examples:
+                out = self.evaluator.eval(prog, ex.inputs)
+                local_success = out == ex.output
+                failed |= not local_success
+                success += local_success
+                if isinstance(out, list):
+                    outputs = (outputs, tuple(out))
+                else:
+                    outputs = (outputs, out)  # type: ignore
+            if not failed:
+                break
+        original = self._results.get(outputs)
+        if original is not None:
+            return True
+        else:
+            self._results[outputs] = program
+            return False
+
+
 # ================================
 # Load constants specific to dataset
 # ================================
@@ -190,13 +226,15 @@ def enumerative_search(
     if start == 0:
         trace.append(["solved", "solution"] + stats_name)
     for task, pcfg in zip(tasks[start:], pcfgs[start:]):
+
         total += 1
         task_solved = False
         solution = None
         try:
-            sol_generator = solver.solve(
-                task, custom_enumerate(pcfg), timeout=task_timeout
-            )
+            obs_eq = ObsEq(task, solver.evaluator)
+            pe = custom_enumerate(pcfg)
+            pe.set_equiv_check(obs_eq.test_equivalent)
+            sol_generator = solver.solve(task, pe, timeout=task_timeout)
             solution = next(sol_generator)
             task_solved = True
             solved += 1
