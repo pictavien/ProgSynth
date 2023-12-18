@@ -18,7 +18,7 @@ __syntax = auto_type(
         "-": "int -> int -> int",
         "len": "string -> int",
         "indexof": "string -> string -> int -> int",
-        "indexof": "string -> string -> int",
+        "firstindexof": "string -> string -> int",
         "*": "int -> int -> int",
         "%": "int -> int -> int",
         "=": "'a[string|int] -> 'a[string|int] -> bool",
