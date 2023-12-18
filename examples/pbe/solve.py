@@ -143,11 +143,12 @@ dataset_name = dataset_file[start_index : dataset_file.index(".", start_index)]
 supported_type_requests = Dataset.load(support).type_requests() if support else None
 
 
-class ObsEq:
+class ObsEq(DSLEvaluator):
     def __init__(self, task: Task[PBEWithConstants], evaluator: DSLEvaluator) -> None:
         self._results: Dict[Any, Any] = {}
         self.task = task
         self.evaluator = evaluator
+        self._success = {}
 
     def test_equivalent(self, program: Program) -> bool:
         outputs = None
@@ -166,6 +167,7 @@ class ObsEq:
                 else:
                     outputs = (outputs, out)  # type: ignore
             if not failed:
+                self._success[program] = prog
                 break
         original = self._results.get(outputs)
         if original is not None:
@@ -173,6 +175,12 @@ class ObsEq:
         else:
             self._results[outputs] = program
             return False
+
+    def eval(self, program: Program, input: List) -> Any:
+        if program not in self._success:
+            return None
+        else:
+            return self.evaluator.eval(self._success[program], input)
 
 
 # ================================
@@ -232,6 +240,7 @@ def enumerative_search(
         solution = None
         try:
             obs_eq = ObsEq(task, solver.evaluator)
+            solver: PBESolver = method(evaluator=obs_eq)
             pe = custom_enumerate(pcfg)
             pe.set_equiv_check(obs_eq.test_equivalent)
             sol_generator = solver.solve(task, pe, timeout=task_timeout)
