@@ -37,14 +37,14 @@ for file in glob.glob(folder + "*.sl"):
     assert guessed
 
     # Parse Type Request
-    tr = FunctionType(
-        auto_type(
-            "->".join(
-                ["string"] * len(string_variables) + ["int"] * len(integer_variables)
-            )
-        ),
-        guessed,
+    tr = auto_type(
+        " -> ".join(
+            ["string"] * len(string_variables)
+            + ["int"] * len(integer_variables)
+            + [str(guessed)]
+        )
     )
+    print("\t", tr)
     # constants
     constants = {auto_type("int"): integer_literals, auto_type("str"): string_literals}
     # Create task
