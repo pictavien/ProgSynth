@@ -148,34 +148,31 @@ class ObsEq(DSLEvaluator):
         self._results: Dict[Any, Any] = {}
         self.task = task
         self.evaluator = evaluator
-        self._success = {}
-        # print("Tackling:", task.metadata["name"])
-        # print("Constants:", task.specification.constants)
+        self.evaluator.clear_cache()
+        self._success = set()
+        print("Tackling:", task.metadata["name"])
+        print("Constants:", task.specification.constants)
         self._eval = set()
 
     def test_equivalent(self, program: Program) -> bool:
         if program in self._eval:
             return False
         outputs = None
-        # print("eval:", program)
-        for prog in program.all_constants_instantiation(
-            self.task.specification.constants
-        ):
-            failed = False
-            for ex in self.task.specification.examples:
-                out = self.evaluator.eval(prog, ex.inputs)
-                # print("\t", prog, "on", ex.inputs, "==", out)
-                local_success = out == ex.output
-                failed |= not local_success
-                if isinstance(out, list):
-                    outputs = (outputs, tuple(out))
-                else:
-                    outputs = (outputs, out)  # type: ignore
-            if not failed:
-                print("solved!")
-                self._success[program] = prog
-                break
+        failed = False
+        for ex in self.task.specification.examples[:10]:
+            out = self.evaluator.eval(program, ex.inputs)
+            if out is None:
+                return True
+            # print("\t", prog, "on", ex.inputs, "==", out)
+            local_success = out == ex.output
+            failed |= not local_success
+            outputs = (outputs, out)  # type: ignore
+        if not failed:
+            print("solved!")
+            self._success.add(program)
+            return False
         # input()
+        # print(outputs)
         original = self._results.get(outputs)
         if original is not None:
             # print("WAIT:", program, "<==>", original)
@@ -189,10 +186,12 @@ class ObsEq(DSLEvaluator):
         if program not in self._success:
             return None
         else:
-            return self.evaluator.eval(self._success[program], input)
+            return self.evaluator.eval(program, input)
 
     def clear_cache(self) -> None:
         self._success = {}
+        self._eval.clear()
+        self._results.clear()
         return self.evaluator.clear_cache()
 
 
@@ -223,7 +222,7 @@ def save(trace: Iterable) -> None:
 
 # Enumeration methods =====================================================
 def enumerative_search(
-    dataset: Dataset[PBE],
+    dataset: Dataset[PBEWithConstants],
     evaluator: DSLEvaluatorWithConstant,
     pcfgs: Union[List[ProbDetGrammar], List[ProbUGrammar]],
     trace: List[Tuple[bool, float]],
@@ -253,12 +252,14 @@ def enumerative_search(
         task_solved = False
         solution = None
         try:
+            gr: ProbDetGrammar = pcfg.instantiate_constants(task.specification.constants)  # type: ignore
             obs_eq = ObsEq(task, solver.evaluator)
             solver: PBESolver = method(evaluator=obs_eq)
-            pe = custom_enumerate(pcfg)
+            pe = custom_enumerate(gr)
             pe.set_equiv_check(obs_eq.test_equivalent)
             sol_generator = solver.solve(task, pe, timeout=task_timeout)
             solution = next(sol_generator)
+            sol_generator.send(True)
             task_solved = True
             solved += 1
         except KeyboardInterrupt:
