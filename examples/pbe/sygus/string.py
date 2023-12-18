@@ -61,5 +61,6 @@ dsl = DSL(__syntax)
 dsl.instantiate_polymorphic_types(1)
 evaluator = DSLEvaluator(dsl.instantiate_semantics(__semantics))
 evaluator.skip_exceptions.add(ZeroDivisionError)
+evaluator.skip_exceptions.add(ValueError)
 lexicon = list([chr(i) for i in range(32, 126)])
 constant_types = {auto_type("int"), auto_type("string")}
