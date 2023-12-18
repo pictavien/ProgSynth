@@ -221,7 +221,7 @@ def reproduce_dataset(
     )
 
     return (
-        TaskGenerator(
+        StringTaskGenerator(
             input_sampler,
             evaluator,
             type_sampler,
