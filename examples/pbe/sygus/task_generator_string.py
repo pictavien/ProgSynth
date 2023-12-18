@@ -71,8 +71,16 @@ class StringTaskGenerator(TaskGenerator):
                 const.assign(lmap[i])
                 index[const.type] += 1
         try:
-            return self.evaluator.eval(solution, input)
+            value = self.evaluator.eval(solution, input)
+            for const in solution.constants():
+                if const is not None:
+                    const.reset()
+            return value
+
         except Exception as e:
+            for const in solution.constants():
+                if const is not None:
+                    const.reset()
             if type(e) in self.skip_exceptions:
                 return None
             else:
