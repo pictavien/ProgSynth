@@ -149,15 +149,22 @@ class ObsEq(DSLEvaluator):
         self.task = task
         self.evaluator = evaluator
         self._success = {}
+        # print("Tackling:", task.metadata["name"])
+        # print("Constants:", task.specification.constants)
+        self._eval = set()
 
     def test_equivalent(self, program: Program) -> bool:
+        if program in self._eval:
+            return False
         outputs = None
+        # print("eval:", program)
         for prog in program.all_constants_instantiation(
             self.task.specification.constants
         ):
             failed = False
             for ex in self.task.specification.examples:
                 out = self.evaluator.eval(prog, ex.inputs)
+                # print("\t", prog, "on", ex.inputs, "==", out)
                 local_success = out == ex.output
                 failed |= not local_success
                 if isinstance(out, list):
@@ -165,13 +172,17 @@ class ObsEq(DSLEvaluator):
                 else:
                     outputs = (outputs, out)  # type: ignore
             if not failed:
+                print("solved!")
                 self._success[program] = prog
                 break
+        # input()
         original = self._results.get(outputs)
         if original is not None:
+            # print("WAIT:", program, "<==>", original)
             return True
         else:
             self._results[outputs] = program
+            self._eval.add(program)
             return False
 
     def eval(self, program: Program, input: List) -> Any:
