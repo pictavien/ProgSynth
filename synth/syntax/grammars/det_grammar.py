@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import (
+    Any,
     Callable,
     Dict,
     List,
@@ -141,6 +142,14 @@ class DetGrammar(Grammar, ABC, Generic[U, V, W]):
         Clean this deterministic grammar by removing non reachable, non productive rules.
         """
         pass
+
+    def instantiate_constants(
+        self, constants: Dict[Type, List[Any]]
+    ) -> "DetGrammar[U, V, W]":
+        """
+        Replace all occurences of non instantiated constants with all possible values of instantiated ones.
+        """
+        return self
 
     @abstractmethod
     def derive(
