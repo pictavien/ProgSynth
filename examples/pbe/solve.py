@@ -148,10 +148,9 @@ class ObsEq(DSLEvaluator):
         self._results: Dict[Any, Any] = {}
         self.task = task
         self.evaluator = evaluator
-        self.evaluator.clear_cache()
         self._success = set()
-        print("Tackling:", task.metadata["name"])
-        print("Constants:", task.specification.constants)
+        # print("Tackling:", task.metadata["name"])
+        # print("Constants:", task.specification.constants)
         self._eval = set()
 
     def test_equivalent(self, program: Program) -> bool:
@@ -159,7 +158,7 @@ class ObsEq(DSLEvaluator):
             return False
         outputs = None
         failed = False
-        for ex in self.task.specification.examples[:10]:
+        for ex in self.task.specification.examples:
             out = self.evaluator.eval(program, ex.inputs)
             if out is None:
                 return True
@@ -168,7 +167,6 @@ class ObsEq(DSLEvaluator):
             failed |= not local_success
             outputs = (outputs, out)  # type: ignore
         if not failed:
-            print("solved!")
             self._success.add(program)
             return False
         # input()
@@ -189,7 +187,7 @@ class ObsEq(DSLEvaluator):
             return self.evaluator.eval(program, input)
 
     def clear_cache(self) -> None:
-        self._success = {}
+        self._success = set()
         self._eval.clear()
         self._results.clear()
         return self.evaluator.clear_cache()
@@ -245,6 +243,7 @@ def enumerative_search(
     stats_name = solver.available_stats()
     if start == 0:
         trace.append(["solved", "solution"] + stats_name)
+    loc_solver = solver
     for task, pcfg in zip(tasks[start:], pcfgs[start:]):
         if task.metadata.get("name", None) is not None:
             pbar.set_description_str(task.metadata["name"])
@@ -254,20 +253,23 @@ def enumerative_search(
         try:
             gr: ProbDetGrammar = pcfg.instantiate_constants(task.specification.constants)  # type: ignore
             obs_eq = ObsEq(task, solver.evaluator)
-            solver: PBESolver = method(evaluator=obs_eq)
+            loc_solver: PBESolver = method(evaluator=obs_eq)
             pe = custom_enumerate(gr)
             pe.set_equiv_check(obs_eq.test_equivalent)
-            sol_generator = solver.solve(task, pe, timeout=task_timeout)
+            obs_eq.clear_cache()
+            sol_generator = loc_solver.solve(task, pe, timeout=task_timeout)
             solution = next(sol_generator)
-            sol_generator.send(True)
             task_solved = True
             solved += 1
+            sol_generator.send(True)
         except KeyboardInterrupt:
             break
         except StopIteration:
             pass
-        out = [task_solved, solution] + [solver.get_stats(name) for name in stats_name]
-        solver.reset_stats()
+        out = [task_solved, solution] + [
+            loc_solver.get_stats(name) for name in stats_name
+        ]
+        loc_solver.reset_stats()
         trace.append(out)
         pbar.update(1)
         evaluator.clear_cache()
