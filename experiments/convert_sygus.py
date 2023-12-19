@@ -1,14 +1,25 @@
 import glob
 import os
+import argparse
+import sys
 
 from experiments.sygus_parser import StrParser, BvParser
 from synth.specification import Example, PBEWithConstants
-from synth.syntax import FunctionType, auto_type, guess_type
+from synth.syntax import auto_type, guess_type
 from synth.task import Dataset, Task
 
 
-folder = "../BeeSearch/sygus_string_tasks/"
-BV = True
+parser = argparse.ArgumentParser()
+parser.add_argument("folder", type=str, help="folder from which to load SyGus files")
+parser.add_argument("-bv", action="store_true", help="bit vectors")
+
+parameters = parser.parse_args(sys.argv[1:])
+
+
+folder: str = parameters.folder
+if not folder.endswith("/"):
+    folder += "/"
+BV: bool = parameters.bv
 tasks = []
 
 for file in glob.glob(folder + "*.sl"):
