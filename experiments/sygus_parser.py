@@ -1,5 +1,5 @@
 # sygus parser constants
-DEF_FUN = "define-fun"
+SYNTH_FUN = "synth-fun"
 NT_STRING = "ntString String"
 NT_INT = "ntInt Int"
 CONSTRAINT = "constraint"
@@ -227,6 +227,7 @@ class BvParser:
             i += 1
             if i < len(temp) and temp[i].strip("()") == "_":
                 i += 3
+        print("vars:", self.bv_var, "from:", line)
 
     def parse_io_pair(self, line: str):
         # (constraint (= (f "1/17/16-1/18/17" 1) "1/17/16")) ==> "1/17/16-1/18/17" 1) "1/17/16"
@@ -250,8 +251,8 @@ class BvParser:
         return [self.process_output(i.strip(" ()")) for i in p_input.split(" ")]
 
     def process_output(self, output: str):
-        if output.startswith("#"):
-            return int(output[1:].strip(), 16)
+        if output.startswith("#x"):
+            return int(output[2:].strip(), 16)
         if "true" in output:
             return True
         elif "false" in output:
@@ -263,9 +264,9 @@ class BvParser:
         f = open(filename, "r")
 
         lines = f.readlines()
-        for step, line in enumerate(lines):
+        for line in lines:
 
-            if DEF_FUN in line:
+            if SYNTH_FUN in line:
                 self.parse_vars(line)
 
             if CONSTRAINT in line:

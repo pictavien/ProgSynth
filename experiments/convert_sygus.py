@@ -49,7 +49,7 @@ for file in glob.glob(folder + "*.sl"):
     # Parse examples
     examples = []
     guessed = None
-    for example in specifications[-1]:
+    for example in specifications[-2]:
         inputs = []
         for name in var_names:
             inputs.append(example[name])
