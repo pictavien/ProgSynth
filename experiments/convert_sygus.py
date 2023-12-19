@@ -57,6 +57,8 @@ for file in glob.glob(folder + "*.sl"):
         if ex not in examples:
             examples.append(ex)
             guessed = guess_type(example["out"])
+            if BV and guessed == auto_type("int"):
+                guessed = auto_type("bv")
     assert guessed
 
     # Parse Type Request
