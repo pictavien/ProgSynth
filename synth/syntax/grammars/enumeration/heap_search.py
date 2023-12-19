@@ -97,6 +97,10 @@ class HSEnumerator(
                 program = self.query(self.start, program)
                 if program is None:
                     return
+            if self._check_equiv_(program):
+                self.merge_program(self.current, program)  # type: ignore
+                self.current = program
+                continue
             self.seen.add(program)
             self.current = program
             yield program
@@ -203,9 +207,6 @@ class HSEnumerator(
                         hash_new_program not in self.hash_table_program[S]
                         and hash_new_program not in self.deleted
                     ):
-                        if self._check_equiv_(new_program):
-                            self.deleted.add(new_program)
-                            return
                         self.hash_table_program[S].add(hash_new_program)
                         try:
                             priority: Ordered = self.compute_priority(S, new_program)
