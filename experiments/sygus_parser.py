@@ -227,7 +227,6 @@ class BvParser:
             i += 1
             if i < len(temp) and temp[i].strip("()") == "_":
                 i += 3
-        print("vars:", self.bv_var, "from:", line)
 
     def parse_io_pair(self, line: str):
         # (constraint (= (f "1/17/16-1/18/17" 1) "1/17/16")) ==> "1/17/16-1/18/17" 1) "1/17/16"
