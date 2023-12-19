@@ -1,4 +1,5 @@
 # sygus parser constants
+DEF_FUN = "define-fun"
 NT_STRING = "ntString String"
 NT_INT = "ntInt Int"
 CONSTRAINT = "constraint"
@@ -178,6 +179,121 @@ class StrParser:
             self.str_literals,
             self.int_var,
             self.int_literals,
+            self.test_cases,
+            self.problem,
+        ]
+
+    def parse(self):
+
+        self.read(self.problem)
+        # self.problem = self.filename
+        return self.get_attrs()
+
+
+class BvParser:
+    """
+    Returns:
+            bv_var: variables to represent input bv data
+            input: input values (for str_var or int_var)
+            output: output string database
+    """
+
+    def __init__(self, filename):
+        self.bv_var = []
+        self.input = []
+        self.output = []
+        self.problem = filename
+        self.test_cases = []
+
+    def reset(self):
+        self.bv_var = []
+        self.input = []
+        self.output = []
+        self.test_cases = []
+
+    def parse_vars(self, line: str):
+        # (synth-fun f ((x (_ BitVec 64))) (_ BitVec 64)
+        temp = line.strip().split(" ")[2:]
+        # ((x (_ BitVec 64))) (_ BitVec 64)
+        if temp[-1].strip("()").isnumeric():
+            temp = temp[:-3]
+        else:
+            temp = temp[:-1]
+        # ((x (_ BitVec 64)))
+        i = 0
+        while i < len(temp):
+            var = temp[i].strip("()")
+            self.bv_var.append(var)
+            i += 1
+            if i < len(temp) and temp[i].strip("()") == "_":
+                i += 3
+
+    def parse_io_pair(self, line: str):
+        # (constraint (= (f "1/17/16-1/18/17" 1) "1/17/16")) ==> "1/17/16-1/18/17" 1) "1/17/16"
+        io = line.split("(f")[1].strip(" ()")
+
+        # "1/17/16-1/18/17" 1) "1/17/16")) ==> ["1/17/16-1/18/17" 1, "1/17/16", ..]
+        io_splitted = io.split(")", 1)
+
+        inp = io_splitted[0].strip()
+
+        out = io_splitted[1].strip()
+
+        inp = self.process_input(inp)
+        out = self.process_output(out)
+
+        self.input += [inp]
+        self.output.append(out)
+
+    def process_input(self, p_input: str):
+
+        return [self.process_output(i.strip(" ()")) for i in p_input.split(" ")]
+
+    def process_output(self, output: str):
+        if output.startswith("#"):
+            return int(output[1:].strip(), 16)
+        if "true" in output:
+            return True
+        elif "false" in output:
+            return False
+        return output
+
+    def read(self, filename):
+        # self.reset()
+        f = open(filename, "r")
+
+        lines = f.readlines()
+        for step, line in enumerate(lines):
+
+            if DEF_FUN in line:
+                self.parse_vars(line)
+
+            if CONSTRAINT in line:
+                io_pair = line.strip()
+                self.parse_io_pair(io_pair)
+
+        f.close()
+
+    def transform_outputs(self):
+        test_cases = []
+        for index, input_value in enumerate(self.input):
+            test_case = {}
+            count = 0
+            for v in self.bv_var:
+                test_case[v] = input_value[count]
+                count += 1
+
+            test_case["out"] = self.output[index]
+
+            test_cases.append(test_case)
+
+        self.test_cases = test_cases
+
+    def get_attrs(self):
+
+        self.transform_outputs()
+        return [
+            self.bv_var,
             self.test_cases,
             self.problem,
         ]
