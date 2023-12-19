@@ -117,12 +117,16 @@ class BeapSearch(
         failed = False
         while not failed:
             failed = True
+            self.failed_by_equiv = False
             for prog in self.query(self.G.start, n):
                 failed = False
                 if prog in self._seen:
                     continue
                 self._seen.add(prog)
+                # print("\t", prog)
                 yield prog
+            failed = failed and not self.failed_by_equiv
+            # print("Has failed:", failed, "n=", n)
             n += 1
 
     def programs_in_banks(self) -> int:
@@ -139,6 +143,8 @@ class BeapSearch(
         if cost_index >= len(self._cost_lists[S]):
             return
         cost = self._cost_lists[S][cost_index]
+        self.failed_by_equiv = False
+
         while queue and queue[0].cost == cost:
             element = heappop(queue)
             nargs = self.G.arguments_length_for(S, element.P)
@@ -153,8 +159,6 @@ class BeapSearch(
                     failed = True
                     break
                 args_possibles.append(possibles)
-            if failed:
-                continue
             # Generate next combinations
             for i in range(nargs):
                 index_cost = element.combination.copy()
@@ -172,12 +176,17 @@ class BeapSearch(
 
             if cost_index not in bank:
                 bank[cost_index] = []
+            if failed:
+                self.failed_by_equiv = True
+                continue
             for new_args in product(*args_possibles):
                 new_program = Function(element.P, list(new_args))
                 if new_program in self._deleted:
+                    self.failed_by_equiv = True
                     continue
                 if self._check_equiv_(new_program):
                     self._deleted.add(new_program)
+                    self.failed_by_equiv = True
                     continue
                 bank[cost_index].append(new_program)
                 yield new_program
