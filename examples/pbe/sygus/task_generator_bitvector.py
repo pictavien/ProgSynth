@@ -188,7 +188,7 @@ def reproduce_bitvector_dataset(
     def get_sampler(start: TList[int]) -> UnionSampler:
         return UnionSampler(
             {
-                auto_type("bv"): LexiconSampler(start, seed=seed),
+                auto_type("bv"): LexiconSampler(list(start), seed=seed),
                 BOOL: LexiconSampler([True, False], seed=seed),
             }
         )
@@ -206,6 +206,7 @@ def reproduce_bitvector_dataset(
         *args,
         **kwargs
     )
+    lexicon = list(lexicon)
 
     generator = TaskGenerator(
         task_generator.input_generator,
