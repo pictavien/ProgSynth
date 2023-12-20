@@ -15,7 +15,7 @@ __syntax = auto_type(
         "or": "bv -> bv -> bv",
         "xor": "bv -> bv -> bv",
         "add": "bv -> bv -> bv",
-        "ite": "bv -> bv -> bv",
+        "ite": "bv -> bv -> bv -> bv",
         "0": "bv",
         "1": "bv",
     }
@@ -42,4 +42,4 @@ evaluator = DSLEvaluator(dsl.instantiate_semantics(__semantics))
 # evaluator.skip_exceptions.add(ValueError)
 # evaluator.skip_exceptions.add(TypeError)
 # TODO: lexicon
-lexicon = list([chr(i) for i in range(32, 126)])
+lexicon = list([i for i in range(100000)])
