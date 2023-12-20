@@ -1,6 +1,8 @@
 from synth.semantic.evaluator import DSLEvaluator
 from synth.syntax import DSL, auto_type
 
+from examples.pbe.sygus.task_generator_bitvector import reproduce_bitvector_dataset
+
 
 __syntax = auto_type(
     {
