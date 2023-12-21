@@ -1,5 +1,6 @@
 # sygus parser constants
 SYNTH_FUN = "synth-fun"
+DEF_FUN = "define-fun"
 NT_STRING = "ntString String"
 NT_INT = "ntInt Int"
 CONSTRAINT = "constraint"
@@ -295,6 +296,97 @@ class BvParser:
         return [
             self.bv_var,
             self.test_cases,
+            self.problem,
+        ]
+
+    def parse(self):
+
+        self.read(self.problem)
+        # self.problem = self.filename
+        return self.get_attrs()
+
+
+class HackerDelightParser:
+    """
+    Returns:
+            bv_var: variables to represent input bv data
+            input: input values (for str_var or int_var)
+            output: output string database
+    """
+
+    def __init__(self, filename):
+        self.bv_var = []
+        self.dst = ""
+        self.problem = filename
+        self.solution = ""
+        self.constants = []
+
+    def str2type(self, s: str) -> str:
+        if s == "BitVec":
+            return "bv"
+        return "bool"
+
+    def parse_vars(self, line: str):
+        # (synth-fun f ((x (_ BitVec 64))) (_ BitVec 64)
+        temp = line.strip().split(" ")[2:]
+        temp = [x.strip("()") for x in temp]
+        temp = [x for x in temp if len(x) > 0 and x != "64"]
+        self.dst = self.str2type(temp.pop(-1))
+
+        # ((x (_ BitVec 64)))
+        i = 0
+        while i < len(temp):
+            var = temp[i]
+            self.bv_var.append(var)
+            assert self.str2type(temp[i + 1]) == "bv"
+            i += 2
+
+    def parse_solution(self, line: str):
+        elems = line.split(" ")[2:]
+        elems = elems[3 * len(self.bv_var) :]
+        if self.dst == "bv":
+            elems = elems[2:]
+        else:
+            elems = elems[1:]
+        for elem in elems:
+            if elem.startswith("#x"):
+                self.constants.append(elem.strip("() "))
+        self.solution = " ".join(elems)
+        self.solution = self.solution[:-1]
+        for i, name in enumerate(self.bv_var):
+            self.solution = self.solution.replace(f" {name}", f" var{i}")
+        # print("sol:", self.solution)
+
+    def count_lvl(self, line: str) -> int:
+        return line.count("(") - line.count(")")
+
+    def read(self, filename):
+        # self.reset()
+        f = open(filename, "r")
+
+        lines = f.readlines()
+        level = 0
+        for line in lines:
+
+            if SYNTH_FUN in line:
+                self.parse_vars(line)
+
+            if level > 0:
+                level += self.count_lvl(line)
+                self.solution += " " + line.strip()
+
+            if DEF_FUN in line:
+                self.solution = line.strip()
+                level = self.count_lvl(line)
+
+        f.close()
+
+    def get_attrs(self):
+        self.parse_solution(self.solution)
+
+        return [
+            self.bv_var,
+            self.solution,
             self.problem,
         ]
 

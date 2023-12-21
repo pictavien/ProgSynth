@@ -27,7 +27,7 @@ from synth.syntax.type_helper import auto_type
 
 from synth.task import Dataset, Task
 from synth.specification import PBE, Example, PBEWithConstants
-from synth.semantic.evaluator import DSLEvaluator, DSLEvaluatorWithConstant
+from synth.semantic.evaluator import DSLEvaluator
 from synth.syntax import (
     STRING,
     INT,
@@ -42,6 +42,77 @@ from synth.generation import (
 np.random.seed(12)
 
 T = TypeVar("T")
+
+np.random.seed(12)
+
+BV = auto_type("bv")
+
+
+class BitVectorTaskGenerator(TaskGenerator):
+    def generate_program(self, type_request: Type) -> Tuple[Program, bool]:
+        program, is_unique = super().generate_program(type_request)
+        if is_unique:
+            n_strings = np.random.randint(10)
+            req = [BV] * n_strings
+            self.__constants = super().sample_input(req)  # type: ignore
+        if getattr(self, "mapping", None) is None:
+            self.mapping: Dict[Type, TList[int]] = {BV: []}
+
+        if True:
+            _mapping: Dict[Type, TList[int]] = {BV: []}
+            for const in program.constants():
+                lmap = _mapping[const.type]
+                choices = self.__constants
+                lmap.append(np.random.choice(choices))
+            for t, l in _mapping.items():
+                if len(self.mapping[t]) < len(l):
+                    self.mapping[t] = l
+
+        return program, is_unique
+
+    def eval_input(self, solution: Program, input: TList) -> Any:
+        index: Dict[Type, int] = {BV: 0}
+        for const in solution.constants():
+            if const is not None:
+                lmap = self.mapping[const.type]
+                i = index[const.type]
+                const.assign(lmap[i])
+                index[const.type] += 1
+        try:
+            value = self.evaluator.eval(solution, input)
+            for const in solution.constants():
+                if const is not None:
+                    const.reset()
+            return value
+
+        except Exception as e:
+            for const in solution.constants():
+                if const is not None:
+                    const.reset()
+            if type(e) in self.skip_exceptions:
+                return None
+            else:
+                raise e
+
+    def make_task(
+        self,
+        type_request: Type,
+        solution: Program,
+        inputs: TList,
+        outputs: TList,
+        **kwargs: Any
+    ) -> Task[PBEWithConstants]:
+        return Task(
+            type_request,
+            PBEWithConstants(
+                [Example(inp, out) for inp, out in zip(inputs, outputs)],
+                {
+                    BV: self.__constants,
+                },
+            ),
+            solution,
+            {"generated": True, **kwargs},
+        )
 
 
 def reproduce_dataset(
@@ -151,7 +222,7 @@ def reproduce_dataset(
     )
 
     return (
-        TaskGenerator(
+        BitVectorTaskGenerator(
             input_sampler,
             evaluator,
             type_sampler,
