@@ -7,7 +7,7 @@ TEST_FILENAME="sygus_bitvectors"
 TEST_FILE="./$DSL/$TEST_FILENAME.pickle"
 BASE_FILE=$TEST_FILE
 ALL_SEEDS="1 48 89498798 35132 849" 
-METHODS="beap_search heap_search bee+_search"
+METHODS="beap_search heap_search bee_search"
 SOLVERS="naive"
 # ALL_SEEDS="1" 
 # ============================================================
