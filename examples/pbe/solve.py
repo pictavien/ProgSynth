@@ -141,17 +141,35 @@ dataset_name = dataset_file[start_index : dataset_file.index(".", start_index)]
 supported_type_requests = Dataset.load(support).type_requests() if support else None
 
 
+MODULO = int(2**14)
+
+
 class ObsEq(DSLEvaluator):
     def __init__(self, task: Task[PBEWithConstants], evaluator: DSLEvaluator) -> None:
         self._results: Dict[Any, Any] = {}
         self.task = task
         self.evaluator = evaluator
         self._success = set()
+        self.solver: Optional[PBESolver] = None
         # print("Tackling:", task.metadata["name"])
         # print("Constants:", task.specification.constants)
         self._eval = set()
+        self.n = 0
+        self.should_quit = False
 
     def test_equivalent(self, program: Program) -> bool:
+        if self.should_quit:
+            return False
+        self.n += 1
+        if self.n > MODULO:
+            self.n = 0
+            if (
+                self.solver is not None
+                and self.solver.timer is not None
+                and self.solver.timer.elapsed_time() > self.solver.timeout
+            ):
+                self.should_quit = True
+                return False
         if program in self._eval:
             return False
         outputs = None
@@ -252,6 +270,7 @@ def enumerative_search(
             gr: ProbDetGrammar = pcfg.instantiate_constants(task.specification.constants)  # type: ignore
             obs_eq = ObsEq(task, solver.evaluator)
             loc_solver: PBESolver = method(evaluator=obs_eq)
+            obs_eq.solver = loc_solver
             pe = custom_enumerate(gr)
             pe.set_equiv_check(obs_eq.test_equivalent)
             obs_eq.clear_cache()

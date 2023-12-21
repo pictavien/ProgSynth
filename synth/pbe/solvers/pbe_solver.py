@@ -13,6 +13,8 @@ class PBESolver(ABC):
     def __init__(self, evaluator: DSLEvaluator, **kwargs: Any) -> None:
         self.evaluator = evaluator
         self._stats: Dict[str, Any] = {}
+        self.timer: Optional[chrono.ClockContextManager] = None
+        self.timeout = 1e99
         self._init_stats_()
 
     def _init_stats_(self) -> None:
@@ -81,6 +83,8 @@ class PBESolver(ABC):
         If False is sent the search continues.
         """
         with chrono.clock(f"solve.{self.name()}") as c:  # type: ignore
+            self.timer = c
+            self.timeout = timeout
             self._init_task_solving_(task, enumerator, timeout)
             for program in enumerator:
                 time = c.elapsed_time()
