@@ -13,10 +13,10 @@ SOLVERS="naive"
 # ============================================================
 # FLAGS =======================================================
 # ============================================================
-MODEL_FLAGS="--b 8"
+MODEL_FLAGS="--b 8 --max-depth -1"
 GEN_TAGS="--inputs 2 --programs 1000 --uniform"
 TRAIN_TAGS="$MODEL_FLAGS -e 2"
-EVAL_TAGS="-t 60"
+EVAL_TAGS="-t 300"
 # ============================================================
 # CODE =======================================================
 # ============================================================
@@ -58,11 +58,11 @@ function do_exp(){
         for method in $METHODS
         do
             echo "  solver: $solver search: $method"
-            python examples/pbe/solve.py --dsl $dsl --dataset $TEST_FILE -o "./$dsl" --support $train_file --pcfg $pcfg_file --solver $solver --search $method ${EVAL_TAGS}
+            python examples/pbe/solve.py --dsl $dsl --dataset $TEST_FILE -o "./$dsl" --support $train_file --pcfg $pcfg_file --solver $solver --search $method ${EVAL_TAGS} &
             abort_on_failure
         done
     done
-    # wait
+    wait
 } 
 
 # Make folder
