@@ -180,7 +180,10 @@ class BeapSearch(
                 self.failed_by_equiv = True
                 continue
             for new_args in product(*args_possibles):
-                new_program = Function(element.P, list(new_args))
+                if len(args_possibles) > 0:
+                    new_program: Program = Function(element.P, list(new_args))
+                else:
+                    new_program = element.P
                 if new_program in self._deleted:
                     self.failed_by_equiv = True
                     continue
