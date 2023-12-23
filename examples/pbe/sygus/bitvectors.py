@@ -48,7 +48,7 @@ __semantics = {
     "bvshl": lambda x: lambda y: (x << y) & MASK if y > 0 and y < 63 else 0,
     "bvsdiv": lambda x: lambda y: x // y if y != 0 else 0,
     "bvsrem": lambda x: lambda y: x % y if y != 0 else 0,
-    "bvsub": lambda x: lambda y: x + y,
+    "bvsub": lambda x: lambda y: x - y,
     "#x0000000000000000": 0,
     "#x0000000000000001": 1,
     "#xffffffffffffffff": MASK,
@@ -58,8 +58,21 @@ __semantics = {
     "bvugt": lambda x: lambda y: abs(x) > abs(y),
     "ite": lambda b: lambda x: lambda y: x if b else y,
 }
-
-dsl = DSL(__syntax)
+__forbidden = {
+    ("bvnot", 0): {"bvnot", "bvneg"},
+    ("bvneg", 0): {"bvnot", "bvneg"},
+    ("bvxor", 0): {"bvxor", "#x0000000000000000", "#xffffffffffffffff"},
+    ("bvxor", 1): {"#x0000000000000000", "#xffffffffffffffff"},
+    ("bvor", 0): {"bvor", "#x0000000000000000", "#xffffffffffffffff"},
+    ("bvxor", 1): {"#x0000000000000000", "#xffffffffffffffff"},
+    ("bvand", 0): {"bvand", "#x0000000000000000", "#xffffffffffffffff"},
+    ("bvand", 1): {"#x0000000000000000", "#xffffffffffffffff"},
+    ("bvadd", 0): {"bvadd", "#x0000000000000000"},
+    ("bvadd", 1): {"#x0000000000000000"},
+    ("bvmul", 0): {"bvmul", "#x0000000000000000", "#x0000000000000001"},
+    ("bvmul", 1): {"#x0000000000000000", "#x0000000000000001"},
+}
+dsl = DSL(__syntax, __forbidden)
 evaluator = DSLEvaluator(dsl.instantiate_semantics(__semantics))
 constant_types = {auto_type("bv")}
 # evaluator.skip_exceptions.add(ZeroDivisionError)
