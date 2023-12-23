@@ -13,7 +13,7 @@ SOLVERS="naive"
 # ============================================================
 # FLAGS =======================================================
 # ============================================================
-MODEL_FLAGS="--b 8 --max-depth -1"
+MODEL_FLAGS="--b 8 --max-depth -1 --ngram 1"
 GEN_TAGS="--inputs 2 --programs 1000 --uniform"
 TRAIN_TAGS="$MODEL_FLAGS -e 2"
 EVAL_TAGS="-t 300"
