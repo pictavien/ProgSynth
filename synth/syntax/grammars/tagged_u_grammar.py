@@ -15,7 +15,7 @@ import vose
 
 from synth.syntax.grammars.det_grammar import DerivableProgram
 from synth.syntax.grammars.u_grammar import UGrammar
-from synth.syntax.program import Function, Program
+from synth.syntax.program import Constant, Function, Program
 from synth.syntax.type_system import Type
 
 T = TypeVar("T")
@@ -96,6 +96,23 @@ class TaggedUGrammar(UGrammar[U, V, W], Generic[T, U, V, W]):
             key: value + other.start_tags[key] for key, value in self.start_tags.items()  # type: ignore
         }
         return self.__class__(self.grammar, new_probs, new_start_tags)
+
+    def instantiate_constants(
+        self, constants: Dict[Type, List[Any]]
+    ) -> "TaggedUGrammar[T, U, V, W]":
+        tags: Dict[Tuple[Type, U], Dict[DerivableProgram, Dict[V, T]]] = {}
+
+        for S in self.tags:
+            tags[S] = {}
+            for P in self.tags[S]:
+                if isinstance(P, Constant) and P.type in constants:
+                    for val in constants[P.type]:
+                        tags[S][Constant(P.type, val, True)] = self.tags[S][P]
+                else:
+                    tags[S][P] = self.tags[S][P]
+        return self.__class__(
+            self.grammar.instantiate_constants(constants), tags, self.start_tags  # type: ignore
+        )
 
 
 class ProbUGrammar(TaggedUGrammar[float, U, V, W]):
@@ -252,7 +269,7 @@ class ProbUGrammar(TaggedUGrammar[float, U, V, W]):
                 else:
                     tags[S][P] = self.tags[S][P]
         return self.__class__(
-            self.grammar.instantiate_constants(constants), tags, self.start_tags
+            self.grammar.instantiate_constants(constants), tags, self.start_tags  # type: ignore
         )
 
     @classmethod
