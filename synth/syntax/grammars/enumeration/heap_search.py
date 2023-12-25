@@ -237,7 +237,7 @@ class HSEnumerator(
                     hash_new_program = hash(new_program)
                     if (
                         hash_new_program not in self.hash_table_program[S]
-                        and hash_new_program not in self.deleted
+                        and new_program not in self.deleted
                     ):
                         self.hash_table_program[S].add(hash_new_program)
                         try:
