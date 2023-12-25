@@ -91,7 +91,13 @@ class HSEnumerator(
         """
         self.__init_non_terminal__(self.G.start)
         self._reevaluate_()
-        self.__init_heap__(self.G.start)
+        # Now we can init the heaps
+        for S in self.G.rules:
+            self.__init_heap__(S)
+        # And now that ALL heaps have been init
+        # Query(S, None) for all
+        for S in self.G.rules:
+            self.query(S, None)
         while True:
             program = self.query(self.start, self.current)
             if program is None:
@@ -171,11 +177,6 @@ class HSEnumerator(
                     changed = True
 
     def __init_heap__(self, S: Tuple[Type, U]) -> None:
-        if S in self._init:
-            return
-        if len(self.heaps[S]) > 0:
-            return
-        self._init.add(S)
         # 2) add P(max(S1),max(S2), ...) to self.heaps[S]
         for P in self.rules[S]:
             program = self.max_priority[(S, P)]
@@ -183,15 +184,6 @@ class HSEnumerator(
             # Remark: the program cannot already be in self.heaps[S]
             assert hash_program not in self.hash_table_program[S]
             # Init heap all others so that query will work
-            nargs = self.G.arguments_length_for(S, P)
-            if nargs > 0:
-                information, current = self.G.derive(self.G.start_information(), S, P)
-                for _ in range(nargs):
-                    self.__init_heap__(current)
-                    information, lst = self.G.derive_all(
-                        information, current, self.max_priority[current]
-                    )
-                    current = lst[-1]
             self.hash_table_program[S].add(hash_program)
             # we assume that the programs from max_probability
             # are represented by the same object
@@ -201,11 +193,6 @@ class HSEnumerator(
                     self.heaps[S],
                     HeapElement(priority, program),
                 )
-
-        # 3) Do the 1st query
-        self.query(S, None)
-
-        self._init.remove(S)
 
     def merge_program(self, representative: Program, other: Program) -> None:
         """
