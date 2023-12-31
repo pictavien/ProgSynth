@@ -6,17 +6,13 @@ DSL="string"
 TEST_FILENAME="sygus_strings"
 TEST_FILE="./$DSL/$TEST_FILENAME.pickle"
 BASE_FILE=$TEST_FILE
-#ALL_SEEDS="1 48 89498798 35132 849" 
-ALL_SEEDS="1 48 89498798" 
-METHODS="beap_search heap_search"
-# BEE SEARCH HAS TO BE DONE SEPARATELY CHANGE MODULO TO VERY SMALL VALUE IN solve.py
-# METHODS="bee_search"
+ALL_SEEDS="1 48 89498798 35132 849 98465 77984812 2798494 618421762 69871020" 
+METHODS="beap_search heap_search bee_search"
 SOLVERS="naive"
-# ALL_SEEDS="1" 
 # ============================================================
 # FLAGS =======================================================
 # ============================================================
-MODEL_FLAGS="--b 8 --max-depth 5"
+MODEL_FLAGS="--b 8 --max-depth -1 --ngram 1"
 GEN_TAGS="--inputs 2 --programs 1000 --uniform"
 TRAIN_TAGS="$MODEL_FLAGS -e 2"
 EVAL_TAGS="-t 300"
@@ -61,7 +57,7 @@ function do_exp(){
         for method in $METHODS
         do
             echo "  solver: $solver search: $method"
-            python examples/pbe/solve.py --dsl $dsl --dataset $TEST_FILE -o "./$dsl" --support $train_file --pcfg $pcfg_file --solver $solver --search $method ${EVAL_TAGS} &
+            # python examples/pbe/solve.py --dsl $dsl --dataset $TEST_FILE -o "./$dsl" --support $train_file --pcfg $pcfg_file --solver $solver --search $method ${EVAL_TAGS} &
             abort_on_failure
         done
     done
