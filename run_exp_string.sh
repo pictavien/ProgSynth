@@ -57,7 +57,7 @@ function do_exp(){
         for method in $METHODS
         do
             echo "  solver: $solver search: $method"
-            # python examples/pbe/solve.py --dsl $dsl --dataset $TEST_FILE -o "./$dsl" --support $train_file --pcfg $pcfg_file --solver $solver --search $method ${EVAL_TAGS} &
+            python examples/pbe/solve.py --dsl $dsl --dataset $TEST_FILE -o "./$dsl" --support $train_file --pcfg $pcfg_file --solver $solver --search $method ${EVAL_TAGS} &
             abort_on_failure
         done
     done
