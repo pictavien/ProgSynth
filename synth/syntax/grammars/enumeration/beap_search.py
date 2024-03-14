@@ -197,9 +197,6 @@ class BeapSearch(
 
             if cost_index not in bank:
                 bank[cost_index] = []
-            if failed:
-                self.failed_by_equiv = True
-                continue
             for new_args in product(*args_possibles):
                 if len(args_possibles) > 0:
                     new_program: Program = Function(element.P, list(new_args))
