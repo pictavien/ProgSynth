@@ -5,11 +5,8 @@
 DSL="bitvectors"
 TEST_FILENAME="sygus_bitvectors"
 TEST_FILE="./$DSL/$TEST_FILENAME.pickle"
-BASE_FILE=$TEST_FILE
-ALL_SEEDS="1" 
 METHODS="beap_search heap_search bee_search"
-SOLVERS="naive"
-# ALL_SEEDS="1" 
+SOLVERS="cutoff"
 # ============================================================
 # FLAGS =======================================================
 # ============================================================
