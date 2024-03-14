@@ -1,4 +1,3 @@
-from collections import defaultdict
 from itertools import product
 from heapq import heappush, heappop, heapify
 from typing import (
@@ -6,6 +5,7 @@ from typing import (
     Generator,
     Generic,
     List,
+    Optional,
     Set,
     Tuple,
     TypeVar,
@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from synth.filter.filter import Filter
 from synth.syntax.grammars.cfg import CFG
 from synth.syntax.grammars.enumeration.program_enumerator import ProgramEnumerator
 from synth.syntax.grammars.grammar import DerivableProgram
@@ -42,24 +43,38 @@ class BeapSearch(
     ProgramEnumerator[None],
     Generic[U, V, W],
 ):
-    def __init__(self, G: ProbDetGrammar[U, V, W]) -> None:
+    def __init__(
+        self, G: ProbDetGrammar[U, V, W], filter: Optional[Filter[Program]] = None
+    ) -> None:
+        super().__init__(filter)
         assert isinstance(G.grammar, CFG)
         self.G = G
         self.cfg: CFG = G.grammar
-        self._seen: Set[Program] = set()
         self._deleted: Set[Program] = set()
 
         # S -> cost list
+        # IDEA: Change from cost list to increase diffs
         self._cost_lists: Dict[Tuple[Type, U], List[float]] = {}
         # S -> cost_index -> program list
         self._bank: Dict[Tuple[Type, U], Dict[int, List[Program]]] = {}
         # S -> heap of HeapElement queued
         self._queues: Dict[Tuple[Type, U], List[HeapElement]] = {}
+        # S -> cost index set
+        self._empties: Dict[Tuple[Type, U], Set[int]] = {}
+
+        self._non_terminal_for: Dict[
+            Tuple[Type, U], Dict[DerivableProgram, List[Tuple[Type, U]]]
+        ] = {}
 
         for S in self.G.grammar.rules:
             self._cost_lists[S] = []
             self._bank[S] = {}
+            self._empties[S] = set()
             self._queues[S] = []
+            self._non_terminal_for[S] = {
+                P: [(Sp[0], (Sp[1], None)) for Sp in self.G.rules[S][P][0]]  # type: ignore
+                for P in self.G.grammar.rules[S]
+            }
 
     def _init_non_terminal_(self, S: Tuple[Type, U]) -> None:
         if len(self._cost_lists[S]) > 0:
@@ -70,20 +85,13 @@ class BeapSearch(
             # Init args
             nargs = self.G.arguments_length_for(S, P)
             cost = self.G.probabilities[S][P]
-            for i in range(nargs):
-                Si = self._non_terminal_for_(S, P, i)
+            for Si in self._non_terminal_for[S][P]:
                 self._init_non_terminal_(Si)
                 cost += self._cost_lists[Si][0]
             index_cost = [0] * nargs
             heappush(queue, HeapElement(cost, index_cost, P))
 
         self._cost_lists[S][0] = queue[0].cost
-
-    def _non_terminal_for_(
-        self, S: Tuple[Type, U], P: DerivableProgram, index: int
-    ) -> Tuple[Type, U]:
-        Sp = self.G.rules[S][P][0][index]  # type: ignore
-        return (Sp[0], (Sp[1], None))  # type: ignore
 
     def _reevaluate_(self) -> None:
         if not self.cfg.is_recursive():
@@ -96,8 +104,8 @@ class BeapSearch(
                     HeapElement(
                         self.G.probabilities[S][el.P]
                         + sum(
-                            self._cost_lists[self._non_terminal_for_(S, el.P, i)][0]
-                            for i in range(len(el.combination))
+                            self._cost_lists[Si][0]
+                            for Si in self._non_terminal_for[S][el.P]
                         ),
                         el.combination,
                         el.P,
@@ -116,17 +124,13 @@ class BeapSearch(
         n = 0
         failed = False
         while not failed:
+            self._failed_by_empties = False
             failed = True
             self.failed_by_equiv = False
             for prog in self.query(self.G.start, n):
                 failed = False
-                if prog in self._seen:
-                    continue
-                self._seen.add(prog)
-                # print("\t", prog)
                 yield prog
-            failed = failed and not self.failed_by_equiv
-            # print("Has failed:", failed, "n=", n)
+            failed = failed and not self._failed_by_empties
             n += 1
 
     def programs_in_banks(self) -> int:
@@ -138,33 +142,47 @@ class BeapSearch(
     def query(
         self, S: Tuple[Type, U], cost_index: int
     ) -> Generator[Program, None, None]:
-        bank = self._bank[S]
-        queue = self._queues[S]
+        # When we return this way, it actually mean that we have generated all programs that this non terminal could generate
         if cost_index >= len(self._cost_lists[S]):
             return
         cost = self._cost_lists[S][cost_index]
-        self.failed_by_equiv = False
-
-        while queue and queue[0].cost == cost:
+        has_generated_program = False
+        no_successor = True
+        bank = self._bank[S]
+        queue = self._queues[S]
+        while len(queue) > 0 and queue[0].cost == cost:
             element = heappop(queue)
-            nargs = self.G.arguments_length_for(S, element.P)
-            Sargs = [self._non_terminal_for_(S, element.P, i) for i in range(nargs)]
+            Sargs = self._non_terminal_for[S][element.P]
+            nargs = len(Sargs)
             # necessary for finite grammars
-            failed = False
+            arg_gen_failed = False
+            is_allowed_empty = False
+            # is_allowed_empty => arg_gen_failed
             # Generate programs
             args_possibles = []
             for i in range(nargs):
-                possibles = self._query_list_(Sargs[i], element.combination[i])
+                is_allowed_empty, possibles = self._query_list_(
+                    Sargs[i], element.combination[i]
+                )
                 if len(possibles) == 0:
-                    failed = True
-                    break
+                    arg_gen_failed = True
+                    if not is_allowed_empty:
+                        break
                 args_possibles.append(possibles)
+            failed_for_other_reasons = arg_gen_failed and not is_allowed_empty
+            no_successor = no_successor and failed_for_other_reasons
+            # a Non terminal as arg is finite and we reached the end of enumeration
+            if failed_for_other_reasons:
+                continue
             # Generate next combinations
             for i in range(nargs):
                 index_cost = element.combination.copy()
                 index_cost[i] += 1
                 cl = self._cost_lists[Sargs[i]]
+                # Finite grammar has reached the end of costs for Sarg[i]
                 if index_cost[i] >= len(cl):
+                    # Either index_cost[i] > 1 so we break or
+                    # index_cost[i] = 1 but then len(cl) = 1 so we need to check
                     if index_cost[i] > 1:
                         break
                     continue
@@ -173,6 +191,9 @@ class BeapSearch(
                 # Avoid duplication with this condition
                 if index_cost[i] > 1:
                     break
+            # If empty cost index set then no need to generate programs
+            if is_allowed_empty:
+                continue
 
             if cost_index not in bank:
                 bank[cost_index] = []
@@ -185,26 +206,41 @@ class BeapSearch(
                 else:
                     new_program = element.P
                 if new_program in self._deleted:
-                    self.failed_by_equiv = True
                     continue
-                if self._check_equiv_(new_program):
+                elif not self._should_keep_subprogram(new_program):
                     self._deleted.add(new_program)
-                    self.failed_by_equiv = True
                     continue
+                has_generated_program = True
                 bank[cost_index].append(new_program)
                 yield new_program
-
-        if queue:
+        if not has_generated_program:
+            # If we failed because of allowed empties we can tag this as allowed empty
+            if not no_successor:
+                self._empties[S].add(cost_index)
+                self._failed_by_empties = True
+        if len(queue) > 0:
             next_cost = queue[0].cost
             self._cost_lists[S].append(next_cost)
 
-    def _query_list_(self, S: Tuple[Type, U], cost_index: int) -> List[Program]:
+    def _query_list_(
+        self, S: Tuple[Type, U], cost_index: int
+    ) -> Tuple[bool, List[Program]]:
+        """
+        returns is_allowed_empty, programs
+        """
+        # It's an empty cost index but a valid one
+        if cost_index in self._empties[S]:
+            return True, []
+        if cost_index >= len(self._cost_lists[S]):
+            return False, []
         bank = self._bank[S]
         if cost_index in bank:
-            return bank[cost_index]
+            return False, bank[cost_index]
         for x in self.query(S, cost_index):
             pass
-        return bank[cost_index]
+        if cost_index in self._empties[S]:
+            return True, []
+        return False, bank[cost_index]
 
     def merge_program(self, representative: Program, other: Program) -> None:
         self._deleted.add(other)
@@ -223,12 +259,9 @@ class BeapSearch(
     def name(cls) -> str:
         return "beap-search"
 
-    def clone_with_memory(
-        self, G: Union[ProbDetGrammar, ProbUGrammar]
-    ) -> "BeapSearch[U, V, W]":
+    def clone(self, G: Union[ProbDetGrammar, ProbUGrammar]) -> "BeapSearch[U, V, W]":
         assert isinstance(G, ProbDetGrammar)
         enum = self.__class__(G)
-        enum._seen = self._seen.copy()
         enum._deleted = self._deleted.copy()
         return enum
 

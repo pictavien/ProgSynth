@@ -17,29 +17,37 @@ def plot_with_incertitude(
     n_points: int = 50,
 ) -> None:
     max_len = max(len(xi) for xi in x)
-    x = [xi for xi in x if len(xi) == max_len]
-    y = [yi for yi in y if len(yi) == max_len]
+    X = np.array([xi for xi in x if len(xi) == max_len])
+    Y = np.array([yi for yi in y if len(yi) == max_len])
 
-    x_min = np.min(np.array(x))
-    x_max = np.max(np.array(x))
+    x_min = np.min(X)
+    x_max = np.max(X)
     if x_max == x_min:
         return
     if cumulative:
-        x_mean = np.cumsum(np.mean(x, axis=0))
+        x_mean = np.cumsum(np.mean(X, axis=0))
         x_min = np.min(x_mean)
         x_max = np.max(x_mean)
-        target_x = np.arange(x_min, x_max + 1, step=(x_max - x_min) / n_points)
+        target_x = (
+            np.arange(x_min, x_max, step=(x_max - x_min) / n_points)
+            if len(X.shape) > 1 or len(X) > n_points
+            else X.reshape(-1)
+        )
 
-        y_mean = np.cumsum(np.mean(y, axis=0))
+        y_mean = np.cumsum(np.mean(Y, axis=0))
         mean = np.interp(target_x, x_mean, y_mean)
 
-        y_var = np.cumsum(np.var(y, axis=0))
+        y_var = np.cumsum(np.var(Y, axis=0))
         y_var = np.interp(target_x, x_mean, y_var)
         std = std_factor * np.sqrt(y_var)
     else:
-        target_x = np.arange(x_min, x_max + 1, step=(x_max - x_min) / n_points)
+        target_x = (
+            np.arange(x_min, x_max, step=(x_max - x_min) / n_points)
+            if len(X.shape) > 1 or len(X) > n_points
+            else X.reshape(-1)
+        )
         data = []
-        for xi, yi in zip(x, y):
+        for xi, yi in zip(X, Y):
             nyi = np.interp(target_x, xi, yi)
             data.append(nyi)
         # Compute distribution
@@ -68,14 +76,19 @@ def make_plot_wrapper(func, *args, **kwargs) -> None:
 def plot_y_wrt_x(
     ax: plt.Axes,
     methods: Dict[str, Dict[int, List]],
-    x_data: Tuple,
-    y_data: Tuple,
-    should_sort: bool = False,
+    x_data: Tuple[int, str],
+    y_data: Tuple[int, str],
     cumulative: bool = True,
+    logx: bool = False,
+    logy: bool = False,
+    xlim: Tuple[Optional[int], Optional[int]] = (0, None),
+    ylim: Tuple[Optional[int], Optional[int]] = (0, None),
+    hline_at_length: bool = False,
+    vline_at_length: bool = False,
 ) -> None:
     # Plot data with incertitude
-    a_index, a_name, a_margin, show_len_a, _ = y_data
-    b_index, b_name, b_margin, show_len_b, _ = x_data
+    a_index, a_name = y_data
+    b_index, b_name = x_data
     max_a = 0
     max_b = 0
     data_length = 0
@@ -86,8 +99,6 @@ def plot_y_wrt_x(
             for seed in seeds
         ]
         data_length = max(data_length, len(data[0]))
-        if should_sort:
-            data = [sorted(seed_data) for seed_data in data]
 
         xdata = [[x[0] for x in seed_data] for seed_data in data]
         ydata = [[x[1] for x in seed_data] for seed_data in data]
@@ -96,8 +107,8 @@ def plot_y_wrt_x(
             xdata,
             ydata,
             method.capitalize(),
-            maxy=data_length if show_len_a else None,
             miny=0,
+            maxy=data_length if hline_at_length else None,
             cumulative=cumulative,
         )
         max_a = max(max(np.max(yi) for yi in ydata), max_a)
@@ -105,46 +116,59 @@ def plot_y_wrt_x(
         if cumulative:
             max_a = max(max(np.sum(yi) for yi in ydata), max_a)
             max_b = max(max(np.sum(xi) for xi in xdata), max_b)
-            pass
     ax.set_xlabel(b_name)
     ax.set_ylabel(a_name)
-    ax.grid()
-    if show_len_a:
+    if hline_at_length:
         ax.hlines(
             [data_length],
             xmin=0,
-            xmax=max_b + b_margin,
+            xmax=(xlim[1] or max_b),
             label=f"All {a_name}",
             color="k",
             linestyles="dashed",
         )
-        max_a = data_length
-    ax.set_xlim(0, max_b + b_margin)
-    ax.set_ylim(0, max_a + a_margin)
+    if vline_at_length:
+        ax.vlines(
+            [data_length],
+            ymin=0,
+            ymax=(xlim[1] or max_a),
+            label=f"All {b_name}",
+            color="k",
+            linestyles="dashed",
+        )
+    if logx:
+        ax.set_xscale("log")
+    else:
+        ax.set_xlim(xlim[0], xlim[1])
+    if logy:
+        ax.set_yscale("log")
+    else:
+        ax.set_ylim(ylim[0], ylim[1])
+    ax.grid()
     ax.legend()
 
 
 def get_rank_matrix(
     methods: Dict[str, Dict[int, List]], yindex: int, maximize: bool
-) -> Tuple[List[str], np.ndarray]:
-    seeds = list(methods.values())[0].keys()
-    task_len = len(list(list(methods.values())[0].values())[0])
-    rank_matrix = np.ndarray((len(methods), task_len, len(methods)), dtype=float)
+) -> np.ndarray:
     method_names = list(methods.keys())
+    task_len = len(list(list(methods.values())[0].values())[0])
+    for val in methods.values():
+        task_len = max(max(len(x) for x in val.values()), task_len)
+    seeds = set(list(methods.values())[0].keys())
+    for val in methods.values():
+        local_seeds = set(x for x, y in val.items() if len(y) == task_len)
+        seeds &= local_seeds
+    rank_matrix = np.ndarray((len(methods), task_len, len(methods)), dtype=float)
     data = np.ndarray((len(methods), len(seeds)), dtype=float)
-    np.random.seed(1)
+    rng = np.random.default_rng(1)
     for task_no in range(task_len):
         for i, method in enumerate(method_names):
             for j, seed in enumerate(seeds):
                 data[i, j] = methods[method][seed][task_no][yindex]
-        # data_for_seed = []
-        # for method in method_names:
-        #     data = methods[method][seed]
-        #     data_for_seed.append([d[yindex] for d in data])
-        # data_for_seed = np.array(data_for_seed)
         if maximize:
             data = -data
-        rand_x = np.random.random(size=data.shape)
+        rand_x = rng.random(size=data.shape)
         # This is done to randomly break ties.
         # Last key is the primary key,
         indices = np.lexsort((rand_x, data), axis=0)
@@ -177,11 +201,14 @@ def __ready_for_stacked_dist_plot__(ax: plt.Axes) -> None:
 
 
 def plot_rank_by(
-    ax: plt.Axes, methods: Dict[str, Dict[int, List]], y_data: Tuple
+    ax: plt.Axes,
+    methods: Dict[str, Dict[int, List]],
+    y_data: Tuple[int, str],
+    maximize: bool = True,
 ) -> None:
     width = 1.0
-    a_index, a_name, a_margin, show_len_a, should_max = y_data
-    rank_matrix = get_rank_matrix(methods, a_index, should_max)
+    a_index, a_name = y_data
+    rank_matrix = get_rank_matrix(methods, a_index, maximize)
     labels = list(range(1, len(methods) + 1))
     mean_ranks = np.mean(rank_matrix, axis=-2)
     bottom = np.zeros_like(mean_ranks[0])
@@ -208,16 +235,19 @@ def plot_rank_by(
     ax.set_xticks(labels)
     ax.set_xticklabels(labels)
     __ready_for_stacked_dist_plot__(ax)
-    word = "Most" if should_max else "Least"
+    word = "Most" if maximize else "Least"
     ax.set_title(f"{word} {a_name}")
 
 
 def plot_dist(
-    ax: plt.Axes, methods: Dict[str, Dict[int, List]], y_data: Tuple, x_axis_name: str
+    ax: plt.Axes,
+    methods: Dict[str, Dict[int, List]],
+    y_data: Tuple[int, str],
+    x_axis_name: str,
 ) -> None:
     width = 1.0
     data_length = 0
-    a_index, a_name, a_margin, show_len_a, should_max = y_data
+    a_index, a_name = y_data
     max_a = max(
         max(max([y[a_index] for y in x]) for x in seed_dico.values())
         for seed_dico in methods.values()

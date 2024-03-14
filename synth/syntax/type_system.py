@@ -47,6 +47,12 @@ class Type(ABC):
     def without_unit_arguments(self) -> "Type":
         return self
 
+    def is_under_specified(self) -> bool:
+        """
+        Returns True iff this type contains UnknownType
+        """
+        return False
+
     def is_instance(self, other: Union["Type", TypeFunctor, type]) -> bool:
         """
         Returns true if and only if this type is an instance of other.
@@ -217,6 +223,9 @@ class FixedPolymorphicType(PolymorphicType):
         super().__init__(name)
         self.types = types
 
+    def is_under_specified(self) -> bool:
+        return any(t.is_under_specified() for t in self.types)
+
     def __arg_is_a__(self, other: "Type") -> bool:
         if isinstance(other, (Sum, FixedPolymorphicType)):
             return all(any(x.is_instance(t) for t in self.types) for x in other.types)
@@ -291,6 +300,9 @@ class Sum(Type):
             v += t.all_versions()
         return v
 
+    def is_under_specified(self) -> bool:
+        return any(t.is_under_specified() for t in self.types)
+
     def __arg_is_a__(self, other: "Type") -> bool:
         if isinstance(other, (Sum, FixedPolymorphicType)):
             return all(any(x.is_instance(t) for t in self.types) for x in other.types)
@@ -363,6 +375,9 @@ class Arrow(Type):
         a = self.type_in.all_versions()
         b = self.type_out.all_versions()
         return [Arrow(x, y) for x in a for y in b]
+
+    def is_under_specified(self) -> bool:
+        return self.type_in.is_under_specified() or self.type_out.is_under_specified()
 
     def __arg_is_a__(self, other: "Type") -> bool:
         return (
@@ -464,6 +479,9 @@ class Generic(Type):
             out.append(Generic(self.name, *cand))
         return out
 
+    def is_under_specified(self) -> bool:
+        return any(t.is_under_specified() for t in self.types)
+
     def __arg_is_a__(self, other: "Type") -> bool:
         return (
             isinstance(other, Generic)
@@ -513,7 +531,7 @@ class Generic(Type):
         return max(t.depth() for t in self.types)
 
     def size(self) -> int:
-        return max(t.size() for t in self.types)
+        return 1 + sum(t.size() for t in self.types)
 
 
 class GenericFunctor(TypeFunctor):
@@ -569,6 +587,9 @@ class UnknownType(Type):
         super().__init__()
         self.hash = hash(1984)
 
+    def is_under_specified(self) -> bool:
+        return True
+
     def __pickle__(o: Type) -> Tuple:
         return UnknownType, ()
 
@@ -576,7 +597,7 @@ class UnknownType(Type):
         return "UnknownType"
 
     def __eq__(self, __o: object) -> bool:
-        return False
+        return isinstance(__o, UnknownType)
 
     def __decompose_type_rec__(
         self,

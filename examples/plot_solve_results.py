@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pltpublish as pub
 import csv
+from colorama import Fore as F
 
 
 from plot_helper import (
@@ -114,11 +115,13 @@ def load_data(
             k.replace(solver, "").strip(" ").capitalize(): v for k, v in methods.items()
         }
     for seed in sorted(summary):
-        print("seed", seed)
+        print(f"{F.BLUE}seed", seed, F.RESET)
         for name, (solved, total) in sorted(summary[seed].items()):
             if len(to_replace) > 0:
                 name = name.replace(to_replace, "").strip()
-            print(f"\t{name} solved {solved}/{total} ({solved/total:.1%}) tasks")
+            print(
+                f"\t{F.GREEN}{name}{F.RESET} solved {F.YELLOW}{solved}{F.RESET}/{total} ({F.YELLOW}{solved/total:.1%}{F.RESET}) tasks"
+            )
     return methods, timeout
 
 
@@ -140,6 +143,9 @@ def timeout_filter(
         if nbr_timeouts == -1:
             nbr_timeouts = len(methods) * len(seeds_dico)
         for seed, data in seeds_dico.items():
+            if task_index >= len(data):
+                nbr_timeouts -= 1
+                continue
             timeouts += 1 - data[task_index][0]
             if timeouts > nbr_timeouts:
                 return False
@@ -200,17 +206,18 @@ def filter(
         m: {
             s: [x for i, x in enumerate(data) if should_keep[i]]
             for s, data in val.items()
+            if len(data) == task_len
         }
         for m, val in methods.items()
     }
 
 
 __DATA__ = {
-    "tasks": (0, "Tasks completed", 10, True, True),
-    "time": (1, "Time (in s)", 5, False, False),
-    "programs": (2, "Programs Enumerated", 0, False, False),
-    "merges": (3, "Programs Merged", 0, False, False),
-    "restarts": (4, "Retsarts", 0, False, False),
+    "tasks": (0, "Tasks completed"),
+    "time": (1, "Time (in s)"),
+    "programs": (2, "Programs Enumerated"),
+    "merges": (3, "Programs Merged"),
+    "restarts": (4, "Restarts"),
 }
 
 
@@ -221,10 +228,16 @@ for ydata in list(__DATA__.keys()):
         if xdata == ydata:
             continue
         __PLOTS__[f"{ydata}_wrt_{xdata}"] = make_plot_wrapper(
-            plot_y_wrt_x, __DATA__[xdata], __DATA__[ydata]
+            plot_y_wrt_x,
+            __DATA__[xdata],
+            __DATA__[ydata],
+            hline_at_length=ydata == "tasks",
+            vline_at_length=xdata == "tasks",
         )
     if ydata != "tasks":
-        __PLOTS__[f"rank_by_{ydata}"] = make_plot_wrapper(plot_rank_by, __DATA__[ydata])
+        __PLOTS__[f"rank_by_{ydata}"] = make_plot_wrapper(
+            plot_rank_by, __DATA__[ydata], maximize=ydata == "tasks"
+        )
         __PLOTS__[f"dist_{ydata}_by_task"] = make_plot_wrapper(
             plot_dist, __DATA__[ydata], "tasks"
         )
@@ -249,9 +262,6 @@ if __name__ == "__main__":
         help="folder in which to look for CSV files (default: './')",
     )
     parser.add_argument(
-        "--sorted", action="store_true", help="sort data by task solving time"
-    )
-    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -270,7 +280,6 @@ if __name__ == "__main__":
     dataset_file: str = parameters.dataset
     output_folder: str = parameters.folder
     verbose: bool = parameters.verbose
-    no_sort: bool = not parameters.sorted
     plots: List[str] = parameters.plots
     filters: List[str] = parameters.filter or []
 
@@ -286,7 +295,7 @@ if __name__ == "__main__":
     methods, timeout = load_data(dataset_name, output_folder, verbose)
     # Check we have at least one file
     if len(methods) == 0:
-        print("Error: no performance file was found!", file=sys.stderr)
+        print(f"{F.RED}Error: no performance file was found!{F.RESET}", file=sys.stderr)
         sys.exit(1)
     for filter_name in filters:
         methods = filter(methods, filter_name, timeout)
@@ -294,7 +303,7 @@ if __name__ == "__main__":
         task_len = len(list(list(methods.values())[0].values())[0])
         if task_len == 0:
 
-            print("Error: filters left no tasks!", file=sys.stderr)
+            print(f"{F.RED}Error: filters left no tasks!{F.RESET}", file=sys.stderr)
             sys.exit(1)
     # Order by name so that it is always the same color for the same methods if diff. DSL
     ordered_methods = OrderedDict()

@@ -1,7 +1,8 @@
 import copy
 from typing import Any, Callable, Dict, Mapping, Optional, List as TList, Set, Tuple
+from synth.syntax.type_helper import FunctionType
 
-from synth.syntax.type_system import UNIT, Type, Arrow, List
+from synth.syntax.type_system import UNIT, Sum, Type, Arrow, List, UnknownType
 from synth.syntax.program import Constant, Function, Primitive, Program, Variable
 
 
@@ -25,7 +26,6 @@ class DSL:
             Primitive(primitive=p, type=t) for p, t in syntax.items()
         ]
         self.forbidden_patterns = forbidden_patterns or {}
-        self._forbidden_computed = False
 
     def __str__(self) -> str:
         s = "Print a DSL\n"
@@ -71,14 +71,16 @@ class DSL:
                 for poly_type in set_polymorphic_types_P:
                     new_set_instantiated_types: Set[Type] = set()
                     for type_ in set_types:
-                        if not poly_type.can_be(type_):
+                        if (
+                            not poly_type.can_be(type_)
+                            or type_.size() > upper_bound_type_size
+                        ):
                             continue
                         for instantiated_type in set_instantiated_types:
                             unifier = {str(poly_type): type_}
                             intermediate_type = copy.deepcopy(instantiated_type)
                             new_type = intermediate_type.unify(unifier)
-                            if new_type.size() <= upper_bound_type_size:
-                                new_set_instantiated_types.add(new_type)
+                            new_set_instantiated_types.add(new_type)
                     set_instantiated_types = new_set_instantiated_types
                 for type_ in set_instantiated_types:
                     instantiated_P = Primitive(P.primitive, type=type_)
@@ -104,6 +106,88 @@ class DSL:
         return isinstance(o, DSL) and set(self.list_primitives) == set(
             o.list_primitives
         )
+
+    def fix_types(
+        self,
+        program: Program,
+    ) -> Program:
+        """
+        Takes a program with possibly UnknownTypes anywhere and try to instantiate the types correctly.
+        This does not solves type equations, it is much weaker but should be enough for most use cases.
+
+        Parameters:
+        -----------
+        - program: the progam whose types needs fixing
+
+        Returns:
+        -----------
+        A parsed program that matches the given string
+        """
+        return self.__fix_types__(program)
+
+    def __fix_types__(
+        self, program: Program, forced_type: Optional[Type] = None
+    ) -> Program:
+        if isinstance(program, Function):
+            fixed_fun = self.__fix_types__(program.function)
+            out: Program = Function(
+                fixed_fun,
+                [
+                    self.__fix_types__(arg, arg_type)
+                    for arg, arg_type in zip(
+                        program.arguments, fixed_fun.type.arguments()
+                    )
+                ],
+            )
+        elif not program.type.is_under_specified():
+            out = program
+        elif isinstance(program, Variable):
+            out = Variable(program.variable, forced_type or program.type)
+        elif isinstance(program, Constant):
+            out = Constant(
+                forced_type or program.type, program.value, program.has_value()
+            )
+        elif isinstance(program, Primitive):
+            if forced_type is None:
+                matching = [
+                    p for p in self.list_primitives if p.primitive == program.primitive
+                ]
+                if len(matching) == 1:
+                    forced_type = matching[0].type
+                elif len(matching) > 1:
+                    forced_type = Sum(*list(map(lambda x: x.type, matching)))
+            out = Primitive(program.primitive, forced_type or program.type)
+        else:
+            assert False, "no implemented"
+        return out
+
+    def auto_parse_program(
+        self,
+        program: str,
+        constants: Dict[str, Tuple[Type, Any]] = {},
+    ) -> Program:
+        """
+        Parse a program from its string representation given the type request.
+        It will try to automatically fix types to guess the type request.
+
+        Parameters:
+        -----------
+        - program: the string representation of the program, i.e. str(prog)
+        - constants: str representation of constants that map to their (type, value)
+
+        Returns:
+        -----------
+        A parsed program that matches the given string
+        """
+        nvars = 0
+        for s in program.split("var"):
+            i = 0
+            while i < len(s) and s[i].isdigit():
+                i += 1
+            if i > 0:
+                nvars = max(int(s[:i]) + 1, nvars)
+        tr = FunctionType(*[UnknownType()] * (nvars + 1))
+        return self.fix_types(self.parse_program(program, tr, constants, False))
 
     def parse_program(
         self,

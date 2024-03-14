@@ -1,32 +1,33 @@
 from collections import defaultdict
 import json
-from typing import Any, Dict, Generator, List, Set, Tuple, TypeVar
-import copy
+from typing import Any, Callable, Dict, Generator, List, Set, Tuple, TypeVar
 import argparse
 
 import tqdm
 import numpy as np
+from colorama import Fore as F
 
 from dataset_loader import add_dataset_choice_arg, load_dataset
 from dsl_loader import add_dsl_choice_arg, load_DSL
+from equivalence_classes_to_filter import equivalence_classes_to_filters
+
 
 from synth import Dataset, PBE
 from synth.generation.sampler import Sampler
 from synth.pbe import reproduce_dataset
-from synth.pruning import UseAllVariablesPruner
-from synth.semantic.evaluator import DSLEvaluatorWithConstant
+from synth.filter import Filter
 from synth.specification import PBEWithConstants
 from synth.syntax import (
     CFG,
+    DetGrammar,
     ProbDetGrammar,
-    enumerate_prob_grammar,
-    PrimitiveType,
+    bps_enumerate_prob_grammar as enumerate_prob_grammar,
     Function,
     Primitive,
     Program,
     Variable,
-    Arrow,
     Type,
+    ProgramEnumerator,
 )
 from synth.utils import chrono
 
@@ -62,13 +63,6 @@ max_depth: int = parameters.max_depth
 no_reproduce: bool = parameters.no_reproduce
 seed: int = parameters.seed
 # ================================
-# Constants
-# ================================
-DREAMCODER = "dreamcoder"
-REGEXP = "regexp"
-CALCULATOR = "calculator"
-TRANSDUCTION = "transduction"
-# ================================
 # Initialisation
 # ================================
 dsl_module = load_DSL(dsl_name)
@@ -79,6 +73,10 @@ full_dataset: Dataset[PBE] = load_dataset(dsl_name, dataset_file)
 
 our_eval = lambda *args: evaluator.eval(*args)
 
+
+# ================================
+# Produce data samplers
+# ================================
 if not no_reproduce:
     if hasattr(dsl_module, "reproduce_dataset"):
         reproduce_dataset = dsl_module.reproduce_dataset
@@ -101,18 +99,14 @@ if not no_reproduce:
     input_sampler = task_generator.input_generator
 else:
     inputs_from_type = defaultdict(list)
-    CSTE_IN = PrimitiveType("CST_STR_INPUT")
-    CSTE_OUT = PrimitiveType("CST_STR_OUTPUT")
     for task in full_dataset:
         for ex in task.specification.examples:
             for inp, arg in zip(ex.inputs, task.type_request.arguments()):
                 inputs_from_type[arg].append(inp)
         # Manage input/output constants
         if isinstance(task.specification, PBEWithConstants):
-            for c_in in task.specification.constants_in:
-                inputs_from_type[CSTE_IN].append(c_in)
-            for c_out in task.specification.constants_out:
-                inputs_from_type[CSTE_OUT].append(c_out)
+            for ct, values in task.specification.constants:
+                inputs_from_type[ct] += values
 
     class SamplesSampler(Sampler):
         def __init__(self, samples: Dict[Type, List[Any]], seed: int) -> None:
@@ -124,38 +118,15 @@ else:
 
     input_sampler = SamplesSampler(inputs_from_type, seed=seed)
 
-    if isinstance(evaluator, DSLEvaluatorWithConstant):
-        cstes_mapper = {}
-
-        def the_our_eval(prog: Program, inp: List[Any]) -> Any:
-            key = tuple(inp)
-            if key not in cstes_mapper:
-                cstes_mapper[key] = input_sampler.sample(CSTE_IN), input_sampler.sample(
-                    CSTE_OUT
-                )
-            c_in, c_out = cstes_mapper[key]
-            return evaluator.eval_with_constant(prog, inp, c_in, c_out)
-
-        our_eval = the_our_eval
-
-# ================================
-# Load dataset & Task Generator
-# ================================
-syntaxic_restrictions: Dict[Tuple[str, int], Set[str]] = defaultdict(set)
-specific_restrictions = set()
-pattern_constraints = []
-
-symmetrics: List[Tuple[str, Set[int]]] = []
-
-
-stats = {s: {"total": 0, "syntaxic": 0} for s in ["identity", "constant", "equivalent"]}
-
 
 # =========================================================================================
 # Equivalence classes
 # =========================================================================================
 
 equivalence_classes = defaultdict(dict)
+commutatives = []
+constants = []
+identities = []
 n_equiv_classes = 0
 
 
@@ -196,97 +167,19 @@ def produce_all_variants(possibles: List[List[T]]) -> Generator[List[T], None, N
             current[i] += 1
 
 
-def vars(program: Program) -> List[Variable]:
-    variables = []
-    for p in program.depth_first_iter():
-        if isinstance(p, Variable):
-            variables.append(p)
-    return variables
-
-
-def constants(program: Program) -> List[Variable]:
-    consts = []
-    for p in program.depth_first_iter():
-        if isinstance(p, Primitive) and not isinstance(p.type, Arrow):
-            consts.append(p)
-    return consts
-
-
-def dump_primitives(program: Program) -> List[str]:
-    pattern = []
-    # Find all variables
-    for p in program.depth_first_iter():
-        if isinstance(p, Primitive):
-            pattern.append(p.primitive)
-    return pattern
-
-
-# =========================================================================================
-# =========================================================================================
-
-
-def forbid_first_derivation(program: Program) -> bool:
-    pattern = dump_primitives(program)
-    if len(pattern) != 2:
-        return False
-    syntaxic_restrictions[(pattern[0], 0)].add(pattern[1])
-    return True
-
-
-def add_symmetric(program: Program) -> None:
-    # global pattern_constraints
-    variables = vars(program)
-    varnos = [v.variable for v in variables]
-    arguments = [v.type for v in sorted(variables, key=lambda k: k.variable)]
-    rtype = program.type
-    swap_indices = {
-        varnos[i] != i and arg_type == rtype for i, arg_type in enumerate(arguments)
-    }
-    if len(swap_indices) == len(varnos):
-        return
-
-    primitive = dump_primitives(program)[0]
-    symmetrics.append((primitive, swap_indices))
-
-
-def add_constraint_for(program: Program, category: str):
-    prog_vars = vars(program)
-    max_vars = len(prog_vars)
-    stats[category]["total"] += 1
-    # If only one variable used, this is easy
-    if max_vars == 1 and forbid_first_derivation(program):
-        stats[category]["syntaxic"] += 1
-        return
-    global specific_restrictions
-    specific_restrictions.add(program)
-
-
-def constant_program_analysis(program: Program):
-    category = "constant"
-    prog_consts = constants(program)
-    max_consts = len(prog_consts)
-    stats[category]["total"] += 1
-
-    # If only one constant used, this is easy
-    if max_consts == 1 and forbid_first_derivation(program):
-        stats[category]["syntaxic"] += 1
-        return
-    else:
-        # TODO: this may be done better
-        global specific_restrictions
-        specific_restrictions.add(program)
-
-
 # =========================================================================================
 # =========================================================================================
 
 sampled_inputs = {}
-all_solutions = defaultdict(dict)
+all_solutions: Dict[Type, Dict[Program, List]] = defaultdict(dict)
 programs_done = set()
 forbidden_types = set()
 
 
 def init_base_primitives() -> None:
+    """
+    Init sampled data types and create signatures for all base primitives
+    """
     primitives: List[Primitive] = dsl.list_primitives
     # Check forbidden types
     all_types = set()
@@ -312,12 +205,49 @@ def init_base_primitives() -> None:
             primitive,
             [Variable(i, arg_type) for i, arg_type in enumerate(arguments)],
         )
+        programs_done.add(base_program)
         solutions = [our_eval(base_program, inp) for inp in inputs]
         all_solutions[base_program.type.returns()][base_program] = solutions
         new_equivalence_class(base_program)
 
 
+def check_program(
+    program: Program, inputs: List, all_sol: Dict[Program, List]
+) -> Tuple[bool, bool, Set[Program], List[Any]]:
+    is_constant = True
+    is_list_constant = True
+    my_outputs = []
+    candidates = set(all_sol.keys())
+    is_identity = [len(program.used_variables()) == 1 for _ in program.type.arguments()]
+    for i, inp in enumerate(inputs):
+        out = our_eval(program, inp)
+        # Update candidates
+        candidates = {c for c in candidates if all_sol[c][i] == out}
+        is_identity = [x and out == inp[i] for i, x in enumerate(is_identity)]
+        if is_constant and len(my_outputs) > 0 and my_outputs[-1] != out:
+            is_constant = False
+        is_list_constant = (
+            is_list_constant
+            and isinstance(out, List)
+            and all(x == out[0] for x in out)  # list with only one same element
+            and (
+                len(my_outputs) == 0  # no input so far
+                or len(out) == 0  # out is empty list
+                or all(
+                    len(x) == 0 for x in my_outputs
+                )  # all elements previously in my_outputs are empty
+                or [x for x in my_outputs if len(x) > 0][0][0]
+                == out[0]  # sole value of out == previous sole value of my_outputs
+            )
+        )
+        my_outputs.append(out)
+    return is_constant or is_list_constant, any(is_identity), candidates, my_outputs
+
+
 def check_symmetries() -> None:
+    """
+    Try to find symmetries (commutativity)
+    """
     iterable = tqdm.tqdm(dsl.list_primitives)
     for primitive in iterable:
         arguments = primitive.type.arguments()
@@ -331,7 +261,6 @@ def check_symmetries() -> None:
         )
         inputs = sampled_inputs[primitive.type]
         all_sol = all_solutions[base_program.type.returns()]
-        solutions = all_sol[base_program]
 
         # ========================
         # Symmetry+Identity part
@@ -348,156 +277,127 @@ def check_symmetries() -> None:
                 primitive,
                 args,
             )
+            if current_prog in programs_done:
+                continue
             programs_done.add(current_prog)
-            is_symmetric = current_prog != base_program
-            outputs = []
-            for inp, sol in zip(inputs, solutions):
-                out = our_eval(current_prog, inp)
-                outputs.append(out)
-                if is_symmetric and out != sol:
-                    is_symmetric = False
-            if is_symmetric:
-                add_symmetric(current_prog)
+            is_constant, is_identity, candidates, my_outputs = check_program(
+                current_prog, inputs, all_sol
+            )
+            is_symmetric = base_program in candidates
+            if is_identity:
+                identities.append(current_prog)
+            elif is_constant:
+                constants.append(current_prog)
+            elif is_symmetric:
+                commutatives.append(current_prog)
                 merge_equivalence_classes(current_prog, base_program)
             else:
                 new_equivalence_class(base_program)
-                all_sol[current_prog] = outputs
+                all_sol[current_prog] = my_outputs
 
 
 def check_equivalent() -> None:
-    simpler_pruner = UseAllVariablesPruner()
     ftypes = tqdm.tqdm(sampled_inputs.keys())
     for ftype in ftypes:
-        # Add forbidden patterns to speed up search
-        dsl.forbidden_patterns = copy.deepcopy(syntaxic_restrictions)
         cfg = CFG.depth_constraint(dsl, ftype, max_depth + 1)
-        pcfg = ProbDetGrammar.uniform(cfg)
 
         inputs = sampled_inputs[ftype]
         all_sol = all_solutions[ftype.returns()]
 
         cfg_size = cfg.programs()
-        ftypes.set_postfix_str(f"{0 / cfg_size:.0%}")
+        ftypes.set_postfix_str(f"{F.GREEN}{0 / cfg_size:.0%}{F.RESET}")
 
         # ========================
         # Check all programs starting with max depth
         # ========================
-        for done, program in enumerate(enumerate_prob_grammar(pcfg)):
-            if program in programs_done or not simpler_pruner.accept((ftype, program)):
+        for done, program in enumerate(get_enumerator(cfg)):
+            if program in programs_done:
                 continue
-            is_constant = True
-            my_outputs = []
-            candidates = set(all_sol.keys())
-            is_identity = len(program.used_variables()) == 1
-            for i, inp in enumerate(inputs):
-                out = our_eval(program, inp)
-                # Update candidates
-                candidates = {c for c in candidates if all_sol[c][i] == out}
-                if is_identity and out != inp[0]:
-                    is_identity = False
-                if is_constant and len(my_outputs) > 0 and my_outputs[-1] != out:
-                    is_constant = False
-                my_outputs.append(out)
+            is_constant, is_identity, candidates, my_outputs = check_program(
+                program, inputs, all_sol
+            )
             if is_identity:
-                add_constraint_for(program, "identity")
+                identities.append(program)
             elif is_constant:
-                add_constraint_for(program, "constant")
+                constants.append(program)
             elif len(candidates) > 0:
                 merge_equivalence_classes(program, list(candidates)[0])
-                add_constraint_for(program, "equivalent")
             else:
                 new_equivalence_class(program)
                 all_sol[program] = my_outputs
-            if done & 256 == 0:
-                ftypes.set_postfix_str(f"{done / cfg_size:.0%}")
+            ftypes.set_postfix_str(f"{F.GREEN}{done / cfg_size:.0%}{F.RESET}")
+    ftypes.close()
 
 
-def check_constants() -> None:
-    types = set(
-        primitive.type
-        for primitive in dsl.list_primitives
-        if not isinstance(primitive.type, Arrow)
-    )
-    for ty in types:
-        all_evals = {our_eval(p, []) for p in dsl.list_primitives if p.type == ty}
-        # Add forbidden patterns to speed up search
-        dsl.forbidden_patterns = copy.deepcopy(syntaxic_restrictions)
-        cfg = CFG.depth_constraint(dsl, ty, max_depth + 1)
-        pcfg = ProbDetGrammar.uniform(cfg)
-        for program in enumerate_prob_grammar(pcfg):
-            out = our_eval(program, [])
-            if out in all_evals:
-                constant_program_analysis(program)
+def get_equivalence_classes() -> List[Set[Program]]:
+    classes = [get_equivalence_class(i) for i in range(n_equiv_classes)]
+    classes.append(identities + constants + [Variable(0)])
+    classes = [l for l in classes if len(l) > 1]
+    return classes
 
 
-def exploit_symmetries() -> None:
-    sym_types = defaultdict(set)
-    name2P = {}
-    for P in dsl.list_primitives:
-        for name, _ in symmetrics:
-            if P.primitive == name:
-                sym_types[P.type.returns()].add(name)
-                name2P[name] = P
-                break
-    for name, forbid_indices in symmetrics:
-        P: Primitive = name2P[name]
-        for i, arg in enumerate(P.type.arguments()):
-            if i in forbid_indices:
-                syntaxic_restrictions[(P.primitive, i)] |= sym_types[arg]
+def update_filter(
+    verbose: bool = True,
+) -> Tuple[Callable[[Type], Filter[Program]], Dict[str, float]]:
+    classes = get_equivalence_classes()
+    if len(classes) == 0:
+        return lambda x: None, {}
+    if verbose:
+        print(
+            f"\tcurrently found {F.YELLOW}{len(classes)}{F.RESET} equivalence classes"
+        )
+    builder = equivalence_classes_to_filters(commutatives, classes, dsl)
+    if verbose:
+        print(
+            f"\tfound {F.YELLOW}{builder.stats['constraints.successes']}{F.RESET} ({F.YELLOW}{builder.stats['constraints.successes']/builder.stats['constraints.total']:.1%}{F.RESET}) constraints"
+        )
+    return (lambda t: builder.get_filter(t, set())), builder.stats
+
+
+def get_enumerator(cfg: DetGrammar) -> ProgramEnumerator:
+    pcfg = ProbDetGrammar.uniform(cfg)
+    enumerator = enumerate_prob_grammar(pcfg)
+    enumerator.filter = update_filter(False)[0](pcfg.type_request)
+    return enumerator
+
+
+def reduced_explosion() -> Tuple[float, float]:
+    stats = update_filter(False)[1]
+    ratio_added = stats["constraints.successes"] / stats["constraints.total"]
+    ratio_size = stats["dfta.size.final"] / stats["dfta.size.initial"]
+    return ratio_added, ratio_size
 
 
 init_base_primitives()
 check_symmetries()
 check_equivalent()
-check_constants()
-exploit_symmetries()
 
 print(f"Cache hit rate: {evaluator.cache_hit_rate:.1%}")
 print()
-print("[=== Report ===]")
-for stat_name in stats:
-    total = stats[stat_name]["total"]
-    if total == 0:
-        print(f"Found no {stat_name} program.")
-        continue
-    ratio = stats[stat_name]["syntaxic"] / total
-    print(
-        "Found",
-        total,
-        stat_name,
-        f"{ratio:.1%} of which were translated into constraints.",
-    )
-if len(symmetrics) > 0:
-    print(
-        f"Found {len(symmetrics)} symmetries of which 100% were translated into constraints."
-    )
-else:
-    print("Found no symmetries.")
-print("[=== Results ===]")
-print(
-    f"Produced {sum(len(x) for x in syntaxic_restrictions.values())} forbidden patterns."
-)
-print(f"Produced {len(pattern_constraints)} type constraints.")
 
-# Saving
-with open(f"constraints_{dsl_name}.py", "w") as fd:
-    fd.write("forbidden_patterns = {")
-    for k, v in sorted(syntaxic_restrictions.items()):
-        fd.write(f'{k}:  {{ "' + '", "'.join(sorted(v)) + '"}, ')
-    fd.write("}\n")
-    fd.write("\n")
-    fd.write("pattern_constraints = ")
-    fd.write(str(pattern_constraints))
-
-classes = [get_equivalence_class(i) for i in range(n_equiv_classes)]
-classes = [l for l in classes if len(l) > 1]
+classes = get_equivalence_classes()
 with open(f"equivalent_classes_{dsl_name}.json", "w") as fd:
     my_list = [list(map(str, l)) for l in classes]
-    json.dump(my_list, fd)
+    json.dump(
+        {
+            "classes": my_list,
+            "commutatives": list(map(str, commutatives)),
+            "identities": list(map(str, identities)),
+            "constants": list(map(str, constants)),
+        },
+        fd,
+    )
 
+
+print(f"Data saved to {F.GREEN}equivalent_classes_{dsl_name}.json{F.RESET}.")
+
+print(f"Found {F.GREEN}{len(classes)}{F.RESET} equivalence classes.")
 print(
-    f"Found {len(classes)} equivalence classes of which 0% were translated into constraints."
+    f"Found {F.GREEN}{len(identities)}{F.RESET} programs that were the identify function."
 )
-print(
-    f"Produced:\n\t- constraints_{dsl_name}.py: which contains the encoded constraints\n\t- equivalent_classes_{dsl_name}.json: which contains the equivalence classes"
-)
+print(f"Found {F.GREEN}{len(constants)}{F.RESET} programs that were a constant.")
+print(f"Found {F.GREEN}{len(commutatives)}{F.RESET} instances of commutativity.")
+print()
+r1, r2 = reduced_explosion()
+print(f"converted {F.GREEN}{r1:.1%}{F.RESET} of constraints found.")
+print(f"reduced combinatorial explosion to {F.GREEN}{r2:.1%}{F.RESET} of original.")

@@ -2,14 +2,16 @@ from typing import (
     Callable,
     Generator,
     Generic,
+    Optional,
     TypeVar,
     Union,
 )
 from abc import ABC, abstractmethod
+
 from synth.syntax.grammars.tagged_det_grammar import ProbDetGrammar
 from synth.syntax.grammars.tagged_u_grammar import ProbUGrammar
-
 from synth.syntax.program import Program
+from synth.filter import Filter
 
 
 U = TypeVar("U")
@@ -21,6 +23,10 @@ class ProgramEnumerator(ABC, Generic[U]):
     When a program is generated a feedback of type U is expected.
     If U is None then no feedback is expected.
     """
+
+    def __init__(self, filter: Optional[Filter[Program]] = None) -> None:
+        super().__init__()
+        self.filter = filter
 
     @classmethod
     @abstractmethod
@@ -59,11 +65,15 @@ class ProgramEnumerator(ABC, Generic[U]):
         """
         Merge other into representative.
         Function used for observational equivalence, that means other and representative are semantically equivalent for the current task.
+        This is for a posteriori merging, it is rather inefficient compared to evaluating subprograms for most enumerative algorithms.
         """
         pass
 
+    def _should_keep_subprogram(self, program: Program) -> bool:
+        return self.filter is None or self.filter.accept(program)
+
     @abstractmethod
-    def clone_with_memory(
+    def clone(
         self, grammar: Union[ProbDetGrammar, ProbUGrammar]
     ) -> "ProgramEnumerator[U]":
         """

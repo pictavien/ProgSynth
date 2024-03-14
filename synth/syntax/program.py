@@ -58,6 +58,13 @@ class Program(ABC):
         """
         yield None
 
+    @abstractmethod
+    def clone(self) -> "Program":
+        """
+        Produces an exact clone (deep copy) of this program.
+        """
+        pass
+
     def all_constants_instantiation(
         self, constants: Dict[Type, TList[Any]]
     ) -> Generator["Program", None, None]:
@@ -95,14 +102,13 @@ class Program(ABC):
         return order
 
     def __pretty_print__(
-        self, defined: Dict["Program", Tuple[int, str, str]], last: int
+        self,
+        defined: Dict["Program", Tuple[int, str, str]],
+        last: int,
     ) -> int:
         if self not in defined:
-            var_name = f"x{last}"
-            defined[self] = (last, var_name, f"{var_name}: {self.type} = {self}")
-            return last + 1
-        else:
-            return last
+            defined[self] = (0, str(self), "")
+        return last
 
     def __contains__(self, other: "Program") -> bool:
         return self == other
@@ -125,28 +131,22 @@ class Variable(Program):
 
     __hash__ = Program.__hash__
 
-    def is_invariant(self, constant_types: Set[PrimitiveType]) -> bool:
-        return False
-
     def __init__(self, variable: int, type: Type = UnknownType()):
         super().__init__(type)
         self.variable: int = variable
         self.hash = hash((self.variable, self.type))
+
+    def is_invariant(self, constant_types: Set[PrimitiveType]) -> bool:
+        return False
+
+    def clone(self) -> "Program":
+        return Variable(self.variable)
 
     def __add_used_variables__(self, vars: Set[int]) -> None:
         vars.add(self.variable)
 
     def __str__(self) -> str:
         return "var" + format(self.variable)
-
-    def __pretty_print__(
-        self, defined: Dict["Program", Tuple[int, str, str]], last: int
-    ) -> int:
-        if self not in defined:
-            defined[self] = (0, str(self), "")
-            return last + 1
-        else:
-            return last
 
     def __eq__(self, other: Any) -> bool:
         return isinstance(other, Variable) and self.variable == other.variable
@@ -182,6 +182,9 @@ class Constant(Program):
 
     def constants(self) -> Generator[Optional["Constant"], None, None]:
         yield self
+
+    def clone(self) -> "Program":
+        return Constant(self.type, self.value, self._has_value)
 
     def all_constants_instantiation(
         self, constants: Dict[Type, TList[Any]]
@@ -260,7 +263,9 @@ class Function(Program):
             return s + ")"
 
     def __pretty_print__(
-        self, defined: Dict["Program", Tuple[int, str, str]], last: int
+        self,
+        defined: Dict["Program", Tuple[int, str, str]],
+        last: int,
     ) -> int:
         if self in defined:
             return last
@@ -275,6 +280,9 @@ class Function(Program):
             f"{var_name}: {self.type} = {self.function}({', '.join(out)})",
         )
         return last + 1
+
+    def clone(self) -> "Program":
+        return Function(self.function.clone(), [x.clone() for x in self.arguments])
 
     def __eq__(self, other: object) -> bool:
         return (
@@ -352,6 +360,9 @@ class Lambda(Program):
         self.body = body
         self.hash = hash(94135 + hash(self.body))
 
+    def clone(self) -> "Program":
+        return Lambda(self.body.clone())
+
     def __pickle__(o: Program) -> Tuple:  # type: ignore[override]
         return Lambda, (o.body, o.type)  # type: ignore
 
@@ -402,6 +413,9 @@ class Primitive(Program):
         super().__init__(type)
         self.primitive = primitive
         self.hash = hash((self.primitive, self.type))
+
+    def clone(self) -> "Program":
+        return Primitive(self.primitive, self.type)
 
     def __pickle__(o: Program) -> Tuple:  # type: ignore[override]
         return Primitive, (o.primitive, o.type)  # type: ignore

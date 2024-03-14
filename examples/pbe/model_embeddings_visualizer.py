@@ -13,7 +13,7 @@ from model_loader import (
 
 from synth.nn import print_model_summary
 from synth.syntax import CFG, UCFG
-from synth.pruning.constraints import add_dfta_constraints
+from synth.filter import add_dfta_constraints
 from synth.pbe.io_encoder import IOEncoder
 
 
@@ -38,9 +38,8 @@ print("Using device:", device)
 # Load DSL ================================================================
 dsl_module = load_DSL(dsl_name)
 dsl, lexicon = dsl_module.dsl, dsl_module.lexicon
-constraints = []
-if constrained and hasattr(dsl_module, "constraints"):
-    constraints = dsl_module.constraints
+constraints = getattr(dsl_module, "constraints", [])
+constant_types = getattr(dsl_module, "constant_types", set())
 # Load Dataset ============================================================
 full_dataset = load_dataset(dsl_name, dataset_file)
 # Load CFGs ===============================================================
@@ -56,7 +55,7 @@ cfgs = [
         t,
         max_depth,
         upper_bound_type_size=10,
-        constant_types=set(),
+        constant_types=constant_types,
         min_variable_depth=0,
     )
     for t in all_type_requests

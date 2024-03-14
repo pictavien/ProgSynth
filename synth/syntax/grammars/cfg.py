@@ -23,6 +23,8 @@ class CFG(TTCFG[CFGState, NoneType]):
         """
         Returns the maximum depth of a program contained in this grammar.
         """
+        if self.programs() < 0:
+            return -1
         return max(S[1][0][1] for S in self.rules) + 1
 
     def __hash__(self) -> int:
@@ -64,15 +66,16 @@ class CFG(TTCFG[CFGState, NoneType]):
         new_reach: Set[CFGNonTerminal] = set()
         reach.add(self.start)
 
-        for _ in range(self.max_program_depth()):
+        while reach:
             new_reach.clear()
             for S in reach:
                 for P in self.rules[S]:
                     args_P = self.rules[S][P][0]
                     for arg in args_P:
                         nctx = (arg[0], (arg[1], None))
-                        new_reach.add(nctx)
-                        reachable.add(nctx)
+                        if nctx not in reachable:
+                            new_reach.add(nctx)
+                            reachable.add(nctx)
             reach.clear()
             reach = new_reach.copy()
 
@@ -134,7 +137,6 @@ class CFG(TTCFG[CFGState, NoneType]):
         dsl: DSL,
         type_request: Type,
         max_depth: int,
-        upper_bound_type_size: int = 10,
         min_variable_depth: int = 1,
         n_gram: int = 2,
         recursive: bool = False,
@@ -147,7 +149,6 @@ class CFG(TTCFG[CFGState, NoneType]):
         Parameters:
         -----------
         - max_depth: the maximum depth of programs allowed, if negative returns an infinite CFG
-        - upper_bound_size_type: the maximum size type allowed for polymorphic type instanciations
         - min_variable_depth: min depth at which variables and constants are allowed
         - n_gram: the context, a bigram depends only in the parent node
         - recursive: enables the generated programs to call themselves
@@ -157,12 +158,10 @@ class CFG(TTCFG[CFGState, NoneType]):
             return CFG.infinite(
                 dsl,
                 type_request,
-                upper_bound_type_size,
                 n_gram,
                 recursive,
                 constant_types,
             )
-        dsl.instantiate_polymorphic_types(upper_bound_type_size)
 
         forbidden_sets = dsl.forbidden_patterns
 
@@ -232,12 +231,11 @@ class CFG(TTCFG[CFGState, NoneType]):
                                     list_to_be_treated.appendleft(new_context)
 
                             rules[non_terminal][P] = (decorated_arguments_P, None)
-
                     # Try to use variable as if there were functions
                     if depth >= min_variable_depth:
                         for vi, varg in enumerate(args):
                             arguments_V = varg.ends_with(current_type)
-                            if arguments_V is not None:
+                            if arguments_V is not None and len(varg.arguments()) > 0:
                                 V = Variable(vi, varg)
                                 decorated_arguments_V = []
                                 for i, arg in enumerate(arguments_V):
@@ -283,7 +281,6 @@ class CFG(TTCFG[CFGState, NoneType]):
         cls,
         dsl: DSL,
         type_request: Type,
-        upper_bound_type_size: int = 10,
         n_gram: int = 2,
         recursive: bool = False,
         constant_types: Set[Type] = set(),
@@ -294,12 +291,10 @@ class CFG(TTCFG[CFGState, NoneType]):
 
         Parameters:
         -----------
-        - upper_bound_size_type: the maximum size type allowed for polymorphic type instanciations
         - n_gram: the context, a bigram depends only in the parent node
         - recursive: enables the generated programs to call themselves
         - constant_types: the set of of types allowed for constant objects
         """
-        dsl.instantiate_polymorphic_types(upper_bound_type_size)
 
         forbidden_sets = dsl.forbidden_patterns
 

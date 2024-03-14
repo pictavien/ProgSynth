@@ -23,7 +23,7 @@ from synth import Dataset, PBE, Task
 from synth.nn import print_model_summary
 from synth.syntax import CFG, UCFG
 from synth.utils import chrono
-from synth.pruning.constraints import add_dfta_constraints
+from synth.filter import add_dfta_constraints
 
 DREAMCODER = "dreamcoder"
 REGEXP = "regexp"
@@ -117,7 +117,6 @@ torch.manual_seed(seed)
 # Load constants specific to DSL
 # ================================
 max_list_length = None
-upper_bound_type_size = 10
 dsl_constant_types = set()
 dsl_module = load_DSL(dsl_name)
 dsl, evaluator, lexicon = dsl_module.dsl, dsl_module.evaluator, dsl_module.lexicon
@@ -125,10 +124,6 @@ if dsl_name == DREAMCODER:
     max_list_length = 10
 elif dsl_name == REGEXP:
     max_list_length = 10
-elif dsl_name == CALCULATOR:
-    upper_bound_type_size = 5
-elif dsl_name == TRANSDUCTION:
-    upper_bound_type_size = 5
 
 if hasattr(dsl_module, "constant_types"):
     dsl_constant_types = dsl_module.constant_types
@@ -169,7 +164,6 @@ cfgs = [
         dsl,
         t,
         max_depth,
-        upper_bound_type_size=upper_bound_type_size,
         constant_types=dsl_constant_types,
         min_variable_depth=0,
         n_gram=ngram,

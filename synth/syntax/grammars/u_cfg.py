@@ -1,6 +1,7 @@
 from collections import defaultdict
 from functools import lru_cache
 from typing import (
+    Any,
     Dict,
     List,
     Optional,
@@ -17,6 +18,7 @@ from synth.syntax.dsl import DSL
 from synth.syntax.grammars.cfg import CFG, CFGState
 from synth.syntax.grammars.grammar import DerivableProgram, NGram
 from synth.syntax.grammars.u_grammar import UGrammar
+from synth.syntax.program import Constant
 from synth.syntax.type_system import Type, UnknownType
 
 U = TypeVar("U")
@@ -193,13 +195,27 @@ class UCFG(UGrammar[U, List[Tuple[Type, U]], List[Tuple[Type, U]]], Generic[U]):
 
         return sum(__compute__(start) for start in self.starts)
 
+    def instantiate_constants(self, constants: Dict[Type, List[Any]]) -> "UCFG[U]":
+        rules: dict[
+            Tuple[Type, U], dict[DerivableProgram, List[List[Tuple[Type, U]]]]
+        ] = {}
+        for NT in self.rules:
+            rules[NT] = {}
+            for P in self.rules[NT]:
+                if isinstance(P, Constant) and P.type in constants:
+                    for val in constants[P.type]:
+                        rules[NT][Constant(P.type, val, True)] = self.rules[NT][P]
+                else:
+                    rules[NT][P] = self.rules[NT][P]
+        # Cleaning produces infinite loop
+        return self.__class__(self.starts, rules, clean=False)
+
     @classmethod
     def depth_constraint(
         cls,
         dsl: DSL,
         type_request: Type,
         max_depth: int,
-        upper_bound_type_size: int = 10,
         min_variable_depth: int = 1,
         n_gram: int = 2,
         recursive: bool = False,
@@ -212,7 +228,6 @@ class UCFG(UGrammar[U, List[Tuple[Type, U]], List[Tuple[Type, U]]], Generic[U]):
         Parameters:
         -----------
         - max_depth: the maximum depth of programs allowed
-        - upper_bound_size_type: the maximum size type allowed for polymorphic type instanciations
         - min_variable_depth: min depth at which variables and constants are allowed
         - n_gram: the context, a bigram depends only in the parent node
         - recursive: enables the generated programs to call themselves
@@ -222,7 +237,6 @@ class UCFG(UGrammar[U, List[Tuple[Type, U]], List[Tuple[Type, U]]], Generic[U]):
             dsl,
             type_request,
             max_depth,
-            upper_bound_type_size,
             min_variable_depth,
             n_gram,
             recursive,

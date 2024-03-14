@@ -60,6 +60,12 @@ class DFTA(Generic[U, V]):
                 rules[S] = (dst1, dst2)
         return DFTA(rules, finals)
 
+    def size(self) -> int:
+        """
+        Return the size of the DFTA which is the number of rules.
+        """
+        return len(self.rules)
+
     @property
     def states(self) -> Set[U]:
         """
@@ -90,6 +96,9 @@ class DFTA(Generic[U, V]):
         for (letter, _), __ in self.rules.items():
             alphabet.add(letter)
         return alphabet
+
+    def read(self, letter: V, children: Tuple[U, ...]) -> Optional[U]:
+        return self.rules.get((letter, children), None)
 
     def __remove_unreachable__(self) -> None:
         new_states = self.states
@@ -122,6 +131,9 @@ class DFTA(Generic[U, V]):
         self.__remove_unproductive__()
 
     def read_product(self, other: "DFTA[W, V]") -> "DFTA[Tuple[U, W], V]":
+        """
+        Read self and other
+        """
         rules: Dict[
             Tuple[
                 V,
@@ -149,6 +161,9 @@ class DFTA(Generic[U, V]):
         other: "DFTA[W, V]",
         fusion: Callable[[Optional[U], Optional[W]], X] = lambda x, y: (x, y),  # type: ignore
     ) -> "DFTA[X, V]":
+        """
+        Read self or other.
+        """
         rules: Dict[
             Tuple[
                 V,
@@ -297,6 +312,15 @@ class DFTA(Generic[U, V]):
             t_args = tuple([f(cls2states[state2cls[q]]) for q in args])
             new_rules[(l, t_args)] = f(cls2states[state2cls[dst]])
         return DFTA(new_rules, {f(cls2states[state2cls[q]]) for q in self.finals})  # type: ignore
+
+    def map_states(self, mapping: Callable[[U], X]) -> "DFTA[X, V]":
+        return DFTA(
+            {
+                (l, tuple(map(mapping, args))): mapping(dst)
+                for (l, args), dst in self.rules.items()
+            },
+            set(map(mapping, self.finals)),
+        )
 
     def __repr__(self) -> str:
         return str(self)

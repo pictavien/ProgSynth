@@ -111,7 +111,7 @@ class TaggedUGrammar(UGrammar[U, V, W], Generic[T, U, V, W]):
                 else:
                     tags[S][P] = self.tags[S][P]
         return self.__class__(
-            self.grammar.instantiate_constants(constants), tags, self.start_tags  # type: ignore
+            self.grammar.instantiate_constants(constants), tags, self.start_tags
         )
 
 
@@ -269,7 +269,7 @@ class ProbUGrammar(TaggedUGrammar[float, U, V, W]):
                 else:
                     tags[S][P] = self.tags[S][P]
         return self.__class__(
-            self.grammar.instantiate_constants(constants), tags, self.start_tags  # type: ignore
+            self.grammar.instantiate_constants(constants), tags, self.start_tags
         )
 
     @classmethod

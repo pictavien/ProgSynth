@@ -2,6 +2,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from heapq import heappush, heappop
 from typing import (
+    Callable,
     Dict,
     Generator,
     Generic,
@@ -14,6 +15,7 @@ from typing import (
 )
 from abc import ABC, abstractmethod
 
+from synth.filter.filter import Filter
 from synth.syntax.grammars.enumeration.program_enumerator import ProgramEnumerator
 from synth.syntax.grammars.enumeration.heap_search import HeapElement, Bucket
 from synth.syntax.program import Program, Function
@@ -45,13 +47,16 @@ def __wrap__(el: Union[U, List[U]]) -> Union[U, Tuple[U, ...]]:
 
 class UHSEnumerator(ProgramEnumerator[None], ABC, Generic[U, V, W]):
     def __init__(
-        self, G: ProbUGrammar[U, V, W], threshold: Optional[Ordered] = None
+        self,
+        G: ProbUGrammar[U, V, W],
+        threshold: Optional[Ordered] = None,
+        filter: Optional[Filter[Program]] = None,
     ) -> None:
+        super().__init__(filter)
         self.G = G
         symbols = [S for S in self.G.rules]
         self.threshold = threshold
-        self.deleted: Set[int] = set()
-        self.seen: Set[int] = set()
+        self.deleted: Set[Program] = set()
 
         # self.heaps[S] is a heap containing programs generated from the non-terminal S
         self.heaps: Dict[Tuple[Type, U], List[HeapElement]] = {S: [] for S in symbols}
@@ -98,13 +103,9 @@ class UHSEnumerator(ProgramEnumerator[None], ABC, Generic[U, V, W]):
             program = self.start_query()
             if program is None:
                 break
-            h = hash(program)
-            while h in self.seen:
-                program = self.start_query()
-                if program is None:
-                    return
-                h = hash(program)
-            self.seen.add(h)
+            if not self._should_keep_subprogram(program):
+                self.deleted.add(program)
+                continue
             yield program
 
     def probability(self, program: Program) -> float:
@@ -202,7 +203,7 @@ class UHSEnumerator(ProgramEnumerator[None], ABC, Generic[U, V, W]):
             return None
         elem = heappop(self._start_heap)
         self.query(elem.start, elem.program)
-        while hash(elem.program) in self.deleted:
+        while elem.program in self.deleted:
             elem = heappop(self._start_heap)
             self.query(elem.start, elem.program)
         return elem.program
@@ -280,7 +281,7 @@ class UHSEnumerator(ProgramEnumerator[None], ABC, Generic[U, V, W]):
         try:
             element = heappop(self.heaps[S])
             succ = element.program
-            while hash(succ) in self.deleted:
+            while succ in self.deleted:
                 self.__add_successors__(succ, S)
                 element = heappop(self.heaps[S])
                 succ = element.program
@@ -300,7 +301,7 @@ class UHSEnumerator(ProgramEnumerator[None], ABC, Generic[U, V, W]):
         In other words, other will no longer be generated through heap search
         """
         our_hash = hash(other)
-        self.deleted.add(our_hash)
+        self.deleted.add(other)
         for S in self.G.rules:
             if our_hash in self.pred[S] and our_hash in self.succ[S]:
                 pred_hash = self.pred[S][our_hash]
@@ -318,13 +319,10 @@ class UHSEnumerator(ProgramEnumerator[None], ABC, Generic[U, V, W]):
     ) -> Ordered:
         pass
 
-    def clone_with_memory(
-        self, G: Union[ProbDetGrammar, ProbUGrammar]
-    ) -> "UHSEnumerator[U, V, W]":
+    def clone(self, G: Union[ProbDetGrammar, ProbUGrammar]) -> "UHSEnumerator[U, V, W]":
         assert isinstance(G, ProbUGrammar)
         enum = self.__class__(G, self.threshold)
         enum.deleted = self.deleted.copy()
-        enum.seen = self.seen.copy()
         return enum
 
 

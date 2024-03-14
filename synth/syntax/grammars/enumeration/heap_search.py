@@ -15,6 +15,7 @@ from typing import (
 from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
 
+from synth.filter.filter import Filter
 from synth.syntax.grammars.enumeration.program_enumerator import ProgramEnumerator
 from synth.syntax.grammars.tagged_u_grammar import ProbUGrammar
 from synth.syntax.program import Program, Function
@@ -42,13 +43,16 @@ class HSEnumerator(
     Generic[U, V, W],
 ):
     def __init__(
-        self, G: ProbDetGrammar[U, V, W], threshold: Optional[Ordered] = None
+        self,
+        G: ProbDetGrammar[U, V, W],
+        threshold: Optional[Ordered] = None,
+        filter: Optional[Filter[Program]] = None,
     ) -> None:
+        super().__init__(filter)
         self.current: Optional[Program] = None
         self.threshold = threshold
 
         self.deleted: Set[Program] = set()
-        self.seen: Set[Program] = set()
 
         self.G = G
         self.start = G.start
@@ -102,16 +106,10 @@ class HSEnumerator(
             program = self.query(self.start, self.current)
             if program is None:
                 return
-            while program in self.seen:
-                program = self.query(self.start, program)
-                if program is None:
-                    return
-            if self._check_equiv_(program):
-                self.merge_program(self.current, program)  # type: ignore
-                self.current = program
-                continue
-            self.seen.add(program)
             self.current = program
+            if not self._should_keep_subprogram(program):
+                self.deleted.add(program)
+                continue
             yield program
 
     def __compute_max_prio__(
@@ -153,19 +151,17 @@ class HSEnumerator(
     def __init_non_terminal__(self, S: Tuple[Type, U]) -> None:
         if S in self._init:
             return
+        if all((S, P) in self.max_priority for P in self.rules[S]):
+            return
         self._init.add(S)
         # 1) Compute max probablities
         best_program, _ = self.__compute_max_prio__(S)
 
-        if best_program is None:
-            self._init.remove(S)
-            return
-        self.max_priority[S] = best_program
         self._init.remove(S)
+        if best_program is not None:
+            self.max_priority[S] = best_program
 
     def _reevaluate_(self) -> None:
-        if not self.G.grammar.is_recursive():  # type: ignore
-            return
         changed = True
         while changed:
             changed = False
@@ -282,13 +278,10 @@ class HSEnumerator(
     def programs_in_queues(self) -> int:
         return sum(len(val) for val in self.heaps.values())
 
-    def clone_with_memory(
-        self, G: Union[ProbDetGrammar, ProbUGrammar]
-    ) -> "HSEnumerator[U, V, W]":
+    def clone(self, G: Union[ProbDetGrammar, ProbUGrammar]) -> "HSEnumerator[U, V, W]":
         assert isinstance(G, ProbDetGrammar)
         enum = self.__class__(G, self.threshold)
         enum.deleted = self.deleted.copy()
-        enum.seen = self.seen.copy()
         return enum
 
 

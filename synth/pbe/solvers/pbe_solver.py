@@ -86,17 +86,25 @@ class PBESolver(ABC):
             self.timer = c
             self.timeout = timeout
             self._init_task_solving_(task, enumerator, timeout)
-            for program in enumerator:
-                time = c.elapsed_time()
-                if time >= timeout:
-                    self._close_task_solving_(task, enumerator, time, False, program)
-                    return
-                self._programs += 1
-                if self._test_(task, program):
-                    should_stop = yield program
-                    if should_stop:
-                        self._close_task_solving_(task, enumerator, time, True, program)
+            try:
+                for program in enumerator:
+                    time = c.elapsed_time()
+                    if time >= timeout:
+                        self._close_task_solving_(
+                            task, enumerator, time, False, program
+                        )
                         return
+                    self._programs += 1
+                    if self._test_(task, program):
+                        should_stop = yield program
+                        if should_stop:
+                            self._close_task_solving_(
+                                task, enumerator, time, True, program
+                            )
+                            return
+            except StopIteration as e:
+                self._close_task_solving_(task, enumerator, time, False, program)
+                raise e
 
     def _test_(self, task: Task[PBE], program: Program) -> bool:
         """
@@ -202,63 +210,3 @@ class CutoffPBESolver(PBESolver):
             n += 1
         self._score = 1
         return True
-
-
-class ObsEqPBESolver(PBESolver):
-    """
-    A solver that uses observational equivalence.
-    """
-
-    @classmethod
-    def name(cls) -> str:
-        return "obs-eq"
-
-    def _init_stats_(self) -> None:
-        super()._init_stats_()
-        self._stats["merged"] = 0
-
-    def _init_task_solving_(
-        self, task: Task[PBE], enumerator: ProgramEnumerator[None], timeout: float = 60
-    ) -> None:
-        super()._init_task_solving_(task, enumerator, timeout)
-        self._merged = 0
-        self._results: Dict[Any, Any] = {}
-        self._enumerator = enumerator
-
-    def _close_task_solving_(
-        self,
-        task: Task[PBE],
-        enumerator: ProgramEnumerator[None],
-        time_used: float,
-        solution: bool,
-        last_program: Program,
-    ) -> None:
-        super()._close_task_solving_(
-            task, enumerator, time_used, solution, last_program
-        )
-        self._stats["merged"] += self._merged
-
-    def _test_(self, task: Task[PBE], program: Program) -> bool:
-        failed = False
-        outputs = None
-        success = 0
-        for ex in task.specification.examples:
-            out = self.evaluator.eval(program, ex.inputs)
-            local_success = out == ex.output
-            failed |= not local_success
-            success += local_success
-            if isinstance(out, list):
-                outputs = (outputs, tuple(out))
-            else:
-                outputs = (outputs, out)  # type: ignore
-
-        if failed:
-            original = self._results.get(outputs)
-            if original is not None:
-                self._enumerator.merge_program(original, program)
-                self._merged += 1
-            else:
-                self._results[outputs] = program
-
-        self._score = success / len(task.specification.examples)
-        return not failed

@@ -167,7 +167,7 @@ This can be done easily by visualizing the tasks of a dataset with the dataset e
 A dataset can be explored using `dataset_explorer.py`.
 
 ```bash
-python dataset_explorer.py --dsl calculator --dataset calculator.pickle
+python examples/pbe/dataset_explorer.py --dsl calculator --dataset calculator.pickle
 ```
 
 ## Creating a Task Generator
@@ -187,7 +187,7 @@ The dataset generator works out of the box for our DSL but that may not always b
 You can generate datasets using:
 
 ```bash
-python dataset_generator_unique.py --dsl calculator --dataset calculator/calculator.pickle -o dataset.pickle --inputs 1 --programs 1000
+python examples/pbe/dataset_generator_unique.py --dsl calculator --dataset calculator/calculator.pickle -o dataset.pickle --inputs 1 --programs 1000
 ```
 
 ## Train a model
@@ -220,7 +220,7 @@ If you are directly interested in synthesizing your first program then jump over
 You can easily evaluate a model using:
 
 ```bash
-python examples/pbe/solve.py --dsl calculator --dataset my_test_dataset.pickle --pcfg pcfgs_my_test_dattaset_my_model.pt -o . -t 60 --support my_train_dataset.pickle --solver cutoff
+python examples/pbe/solve.py --dsl calculator --dataset my_test_dataset.pickle --pcfg pcfgs_my_test_dataset_my_model.pt -o . -t 60 --support my_train_dataset.pickle --solver cutoff
 ```
 
 The most important parameter is perhaps ``-t 60`` which gives a timeout of 60 seconds per task.
@@ -230,7 +230,7 @@ This will produce a CSV file in the output folder (``.`` above).
 This result file can then be plotted using:
 
 ```bash
-python experiments/plot_results.py --dataset my_test_dataset.pickle --folder . --support my_train_dataset.pickle
+python examples/plot_solve_results.py --dataset my_test_dataset.pickle --folder . --support my_train_dataset.pickle
 ```
 
 Again there's a plethora of options available, so feel free to play with them.
@@ -244,41 +244,24 @@ If you are perhaps more interested in solving then you should probably look at t
 ```python
 from synth import Task, PBE
 from synth.semantic import DSLEvaluator
-from synth.syntax import ProbDetGrammar, enumerate_prob_grammar
+from synth.syntax import bps_enumerate_prob_grammar, ProbDetGrammar
+from synth.pbe import CutoffPBESolver
 
 def synthesis(
     evaluator: DSLEvaluator,
     task: Task[PBE],
     pcfg: ProbDetGrammar,
     task_timeout: float = 60
-) -> Tuple[bool, float, int, Optional[Program], Optional[float]]:
-    """
-    Returns:
-      - True if and only if a program was found 
-      - time elapsed in seconds
-      - the number of programs enumerated
-      - the program found if one was found otherwise None
-      - the program's probability if one was found otherwise None
-    """
-    start_time = time.time()
-    programs = 0
-    for program in enumerate_prob_grammar(pcfg):
-      current_time = time.time()
-      if current_time - start_time >= task_timeout:
-        return (False, time, programs, None, None)
-      programs += 1
-      failed = False
-      for ex in task.specification.examples:
-        if evaluator.eval(program, ex.inputs) != ex.output:
-          failed = True
-          break
-      if not failed:
-        return (
-                True,
-                time.time() - start_time,
-                programs,
-                program,
-                pcfg.probability(program),
-                )
-  return (False, time, programs, None, None)
+):
+    solver = CutoffPBESolver(evaluator)
+    solution_generator = solver.solve(task, bps_enumerate_prob_grammar(pcfg), task_timeout)
+    try:
+        solution = next(solution_generator)
+        print("Solution:", solution)
+    except StopIteration:
+        # Failed generating a solution
+        print("No solution found under timeout")
+    for stats in solver.available_stats():
+        print(f"\t{stats}: {solver.get_stats(stats)}")
+    
 ```
