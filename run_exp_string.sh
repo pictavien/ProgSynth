@@ -8,14 +8,14 @@ TEST_FILE="./$DSL/$TEST_FILENAME.pickle"
 BASE_FILE=$TEST_FILE
 ALL_SEEDS="1 48 89498798 35132 849 98465 77984812 2798494 618421762 69871020" 
 METHODS="beap_search heap_search bee_search"
-SOLVERS="naive"
+SOLVERS="cutoff"
 # ============================================================
 # FLAGS =======================================================
 # ============================================================
 MODEL_FLAGS="--b 8 --max-depth -1 --ngram 1"
 GEN_TAGS="--inputs 2 --programs 1000 --uniform"
 TRAIN_TAGS="$MODEL_FLAGS -e 2"
-EVAL_TAGS="-t 300"
+EVAL_TAGS="-t 300 --pruning obs-eq"
 # ============================================================
 # CODE =======================================================
 # ============================================================
