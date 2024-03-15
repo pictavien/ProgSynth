@@ -3,12 +3,11 @@
 # PARAMETERS ==================================================
 # ============================================================
 DSL="deepcoder"
-TEST_FILENAME="deepcoder"
+TEST_FILENAME="test_deepcoder"
 TEST_FILE="./$DSL/$TEST_FILENAME.pickle"
-BASE_FILE=$TEST_FILE
+BASE_FILE="./$DSL/$DSL.pickle"
 ALL_SEEDS="1 48 89498798 35132 849 98465 77984812 2798494 618421762 69871020" 
 METHODS="beap_search heap_search bee_search"
-METHODS="beap_search"
 SOLVERS="cutoff"
 # ============================================================
 # FLAGS =======================================================
