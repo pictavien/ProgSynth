@@ -126,7 +126,6 @@ class BeeSearch(
         self, S: Tuple[Type, U], new_program: Program, cost_index: int
     ) -> bool:
         if new_program in self._deleted:
-            return
             return False
         if not self._should_keep_subprogram(new_program):
             self._deleted.add(new_program)

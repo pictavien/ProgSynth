@@ -195,12 +195,6 @@ class DetGrammar(Grammar, ABC, Generic[U, V, W]):
         pass
 
     @abstractmethod
-    def instantiate_constants(
-        self, constants: Dict[Type, List[Any]]
-    ) -> "DetGrammar[U, V, W]":
-        pass
-
-    @abstractmethod
     def start_information(self) -> W:
         """
         The starting information when deriving from a starting non-terminal.
