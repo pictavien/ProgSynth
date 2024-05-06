@@ -53,6 +53,7 @@ _forbidden_patterns = {
 }
 
 dsl = DSL(__primitive_types, forbidden_patterns=_forbidden_patterns)
+dsl.instantiate_polymorphic_types()
 evaluator = DSLEvaluator(dsl.instantiate_semantics(__semantics))
 lexicon = [round(x, 1) for x in np.arange(-256, 256 + 1, 0.1)]
 
@@ -64,9 +65,8 @@ def reproduce_calculator_dataset(
     seed: Optional[int] = None,
     int_bound: int = 1000,
     *args: Any,
-    **kwargs: Any
+    **kwargs: Any,
 ) -> Tuple[TaskGenerator, TList[int]]:
-
     int_range: TList[int] = [int_bound, 0]
     int_range[1] = -int_range[0]
 
@@ -121,5 +121,5 @@ def reproduce_calculator_dataset(
         get_lexicon,
         seed,
         *args,
-        **kwargs
+        **kwargs,
     )

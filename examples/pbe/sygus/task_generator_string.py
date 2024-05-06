@@ -95,7 +95,7 @@ class StringTaskGenerator(TaskGenerator):
         solution: Program,
         inputs: TList,
         outputs: TList,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> Task[PBEWithConstants]:
         return Task(
             type_request,
@@ -129,7 +129,7 @@ def reproduce_dataset(
     max_list_length: Optional[int] = None,
     uniform_pgrammar: bool = False,
     constraints: TList[str] = [],
-    **kwargs: Any
+    **kwargs: Any,
 ) -> Tuple[TaskGenerator, TList]:
     """
 
@@ -234,7 +234,7 @@ def reproduce_dataset(
                 or -1,
             ),
             max_tries,
-            **kwargs
+            **kwargs,
         ),
         get_lexicon(out[0]),
     )
@@ -246,7 +246,7 @@ def reproduce_string_dataset(
     evaluator: DSLEvaluator,
     seed: Optional[int] = None,
     *args: Any,
-    **kwargs: Any
+    **kwargs: Any,
 ) -> Tuple[TaskGenerator, TList[int]]:
     def analyser(start: None, elment: Any) -> None:
         pass
@@ -286,7 +286,7 @@ def reproduce_string_dataset(
         lambda _: str_lexicon + [0, 1, 2, 3, 4, 5, True, False],
         seed,
         *args,
-        **kwargs
+        **kwargs,
     )
 
     generator = StringTaskGenerator(

@@ -40,6 +40,7 @@ def __convert__(load: Callable[[], Dataset[PBE]], name: str) -> None:
     print(f"Converted {len(tasks)} tasks {sols / len(tasks):.0%} containing solutions")
     # Integrity check
     for task in tqdm.tqdm(tasks, desc="integrity check"):
+        print(task.solution)
         for ex in task.specification.examples:
             assert evaluator.eval(task.solution, ex.inputs) == ex.output
 
