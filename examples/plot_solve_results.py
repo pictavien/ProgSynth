@@ -27,6 +27,7 @@ def load_data(
     all_solver = set()
 
     summary = {}
+    max_len = 0
 
     for file in glob(os.path.join(output_folder, "*.csv")):
         filename = os.path.relpath(file, output_folder)
@@ -67,7 +68,7 @@ def load_data(
             # Pop columns names
             columns = {name: ind for ind, name in enumerate(trace.pop(0))}
             indices = [
-                columns["solved"],
+                columns["solution"],
                 columns["time"],
                 columns["programs"],
                 columns.get("merged", -1),
@@ -77,7 +78,7 @@ def load_data(
             # Type conversion (success, time, num_of_programs)
             trace = [
                 (
-                    int(row[0] == "True"),
+                    len(row[0]) > 1,
                     float(row[1]),
                     int(row[2]),
                     int(row[3]),
@@ -99,6 +100,7 @@ def load_data(
             summary[seed] = {}
         solved = sum(x[0] for x in trace)
         summary[seed][name] = (solved, len(trace))
+        max_len = max(max_len, len(trace))
         if verbose:
             print(
                 f"{name} (seed={seed}) solved",
@@ -120,7 +122,10 @@ def load_data(
             k.replace(solver, "").strip(" ").capitalize(): v for k, v in methods.items()
         }
     for seed in sorted(summary):
-        print(f"{F.BLUE}seed", seed, F.RESET)
+        finished = sum(
+            1 for solved, total in summary[seed].values() if total == max_len
+        )
+        print(f"seed {F.LIGHTBLUE_EX}{seed}{F.RESET} ({finished}/{len(summary[seed])})")
         for name, (solved, total) in sorted(summary[seed].items()):
             if len(to_replace) > 0:
                 name = name.replace(to_replace, "").strip()

@@ -14,7 +14,9 @@ from synth.syntax import (
     ProgramEnumerator,
     auto_type,
 )
-
+from synth.syntax.grammars.enumeration.constant_delay import (
+    enumerate_prob_grammar as cd,
+)
 import tqdm
 import timeout_decorator
 
@@ -22,6 +24,9 @@ SEARCH_ALGOS = {
     "bee_search": bs_enumerate_prob_grammar,
     "beap_search": bps_enumerate_prob_grammar,
     "heap_search": hs_enumerate_prob_grammar,
+    "cd4": lambda x: cd(x, k=4),
+    "cd12": lambda x: cd(x, k=12),
+    "cd100": lambda x: cd(x, k=100),
 }
 
 parser = argparse.ArgumentParser(
@@ -46,12 +51,16 @@ parser.add_argument(
 parser.add_argument(
     "-t", "--timeout", type=int, default=300, help="timeout in seconds (default: 300)"
 )
+parser.add_argument(
+    "-s", "--seed", type=int, default=-1, help="seed (default: -1, uniform)"
+)
 
 
 parameters = parser.parse_args()
 output_file: str = parameters.output
 programs: int = parameters.n
 timeout: int = parameters.timeout
+seed: int = parameters.seed
 # max_rules: int = parameters.max_rules
 max_non_terminals: int = parameters.max_non_terminals
 
@@ -79,7 +88,8 @@ def summary_enumerative_search(
     programs: int,
     timeout: int = 300,
     title: Optional[str] = None,
-) -> Tuple[str, int, int, float, int, int, int]:
+    seed: int = -1,
+) -> Tuple[str, int, int, float, int, int, int, int]:
     n = 0
     non_terminals = len(pcfg.rules)
     derivation_rules = sum(len(pcfg.rules[S]) for S in pcfg.rules)
@@ -129,6 +139,7 @@ def summary_enumerative_search(
         datum_each,
         int(enumerator.programs_in_queues() * factor),
         int(enumerator.programs_in_banks() * factor),
+        seed,
     )
 
 
@@ -141,16 +152,17 @@ def enumerative_search(
     programs: int,
     timeout: int = 300,
     title: Optional[str] = None,
+    seed: int = -1,
 ) -> Tuple[
-    Tuple[str, int, int, float, int, int, int],
-    List[Tuple[str, int, int, float, int, int, int]],
+    Tuple[str, int, int, float, int, int, int, int],
+    List[Tuple[str, int, int, float, int, int, int, int]],
 ]:
     n = 0
     non_terminals = len(pcfg.rules)
     derivation_rules = sum(len(pcfg.rules[S]) for S in pcfg.rules)
     used_time = 0
 
-    pbar = tqdm.tqdm(total=programs, desc=title or name)
+    pbar = tqdm.tqdm(total=programs, desc=title or name, smoothing=0)
     enumerator = custom_enumerate(pcfg)
     gen = enumerator.generator()
     program = 1
@@ -187,6 +199,7 @@ def enumerative_search(
                         n,
                         enumerator.programs_in_queues(),
                         enumerator.programs_in_banks(),
+                        seed,
                     )
                 )
                 rem_time = timeout - used_time / 1e9
@@ -206,6 +219,7 @@ def enumerative_search(
         target_generation_speed,
         int(enumerator.programs_in_queues() * factor),
         int(enumerator.programs_in_banks() * factor),
+        seed,
     ), detailed
 
 
@@ -248,6 +262,7 @@ if __name__ == "__main__":
             "programs",
             "queue",
             "bank",
+            "seed",
         )
     ]
     detailed_trace = [
@@ -259,6 +274,7 @@ if __name__ == "__main__":
             "programs",
             "queue",
             "bank",
+            "seed",
         )
     ]
     print("Working on non terminals scaling")
@@ -276,13 +292,15 @@ if __name__ == "__main__":
             "1": "s1",
         }
         for i in range(2, non_terminals + 1):
-            syntax[f"cast{i}"] = f"s1 -> s{i}"
-            syntax[f"cst{i}"] = f"s{i}"
-        syntax["+"] = (
-            "->".join(map(lambda x: f"s{x}", list(range(2, non_terminals)))) + "-> s1"
-        )
+            syntax[f"cast{i}"] = f"s{i} -> s1"
+            syntax[f"s{i}"] = f"s{i}"
+            syntax[f"+{i}"] = f"s1 -> s{i} -> s{i}"
+            syntax[f"*{i}"] = f"s{i-1} -> s{i} -> s{i+1} -> s{i}"
         cfg = CFG.infinite(DSL(auto_type(syntax)), auto_type("s1->s1"), n_gram=1)
-        pcfg = ProbDetGrammar.uniform(cfg)
+        if seed < 0:
+            pcfg = ProbDetGrammar.uniform(cfg)
+        else:
+            pcfg = ProbDetGrammar.random(cfg, seed=seed)
         for name, enum in SEARCH_ALGOS.items():
             if first:
                 summary, detailed = enumerative_search(
@@ -292,6 +310,7 @@ if __name__ == "__main__":
                     programs,
                     timeout=timeout,
                     title=f"{name}-{non_terminals}",
+                    seed=seed,
                 )  # type: ignore
                 summary_trace.append(summary)
                 detailed_trace += detailed
@@ -304,6 +323,7 @@ if __name__ == "__main__":
                         programs,
                         timeout=timeout,
                         title=f"{name}-{non_terminals}",
+                        seed=seed,
                     )  # type: ignore
                 )
         save(summary_trace, file_name + "_growth.csv")
