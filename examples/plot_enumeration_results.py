@@ -9,7 +9,12 @@ from plot_helper import (
     make_plot_wrapper,
 )
 
-
+replacers = {
+    "beap_search": "eco_search_w/o_buckets",
+    "cd4": "eco_search_4",
+    "cd64": "eco_search_64",
+    "cd16": "eco_search_16",
+}
 __DATA__ = {
     "time": (0, "Time (in s)"),
     "programs": (1, "Programs Enumerated"),
@@ -54,9 +59,12 @@ def load_data(output_file: str, verbose: bool = False) -> Dict[str, Dict[int, Li
         agg = defaultdict(dict)
         for row in data:
             seed = int(row[-1])
-            if seed not in agg[row[0]]:
-                agg[row[0]][seed] = []
-            agg[row[0]][seed].append(row[1:-1])
+            name = row[0]
+            for src, dst in replacers.items():
+                name = name.replace(src, dst)
+            if seed not in agg[name]:
+                agg[name][seed] = []
+            agg[name][seed].append(row[1:-1])
         for name, data in agg.items():
             name = name.replace("_", " ")
             if name not in methods:

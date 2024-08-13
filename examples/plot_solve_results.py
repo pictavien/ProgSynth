@@ -16,6 +16,10 @@ from plot_helper import (
     plot_rank_by,
 )
 
+replacers = {
+    "beap_search": "eco_search_w/o_buckets",
+    "cd_search": "eco_search",
+}
 
 def load_data(
     dataset_name: str, output_folder: str, verbose: bool = False
@@ -46,6 +50,8 @@ def load_data(
                 if verbose:
                     print(f"\tskipped: does not contain _seed_ nor _uniform_")
                 continue
+        for src, dst in replacers.items():
+            name = name.replace(src, dst)
         search = name[1 : name.index(seed_text)].replace("_", " ")
         all_search.add(search)
         name = name[name.index(seed_text) + len(seed_text) :]
@@ -241,8 +247,8 @@ for ydata in list(__DATA__.keys()):
             plot_y_wrt_x,
             __DATA__[xdata],
             __DATA__[ydata],
-            hline_at_length=ydata == "tasks",
-            vline_at_length=xdata == "tasks",
+            # hline_at_length=ydata == "tasks",
+            # vline_at_length=xdata == "tasks",
         )
     if ydata != "tasks":
         __PLOTS__[f"rank_by_{ydata}"] = make_plot_wrapper(
