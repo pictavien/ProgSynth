@@ -11,9 +11,9 @@ from plot_helper import (
 
 replacers = {
     "beap_search": "eco_search_w/o_buckets",
-    "cd4": "eco_search_4",
-    "cd64": "eco_search_64",
-    "cd16": "eco_search_16",
+    "cd4": "eco_search_(bucket_size_=_4)",
+    "cd64": "eco_search_(bucket_size_=_64)",
+    "cd16": "eco_search_(bucket_size_=_16)",
 }
 __DATA__ = {
     "time": (0, "Time (in s)"),
@@ -124,6 +124,11 @@ if __name__ == "__main__":
     ordered_methods = OrderedDict()
     for met in sorted(methods.keys()):
         ordered_methods[met] = methods[met]
+
+    if "Bee Search" not in ordered_methods:
+        colors = pub.get_color_cycle()
+        colors.append(colors.pop(0))
+        pub.set_color_cycle(colors)
     # Plotting
     for count, to_plot in enumerate(plots):
         ax = plt.subplot(1, len(plots), count + 1)
