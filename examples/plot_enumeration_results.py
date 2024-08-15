@@ -11,7 +11,7 @@ from plot_helper import (
 
 replacers = {
     "beap_search": "eco_search_w/o_buckets",
-    "cd4": "eco_search_(bucket_size_=_4)",
+    "cd4": "eco_search_(bucket_size_=__4)",
     "cd64": "eco_search_(bucket_size_=_64)",
     "cd16": "eco_search_(bucket_size_=_16)",
 }
@@ -107,10 +107,26 @@ if __name__ == "__main__":
         default=False,
         help="verbose mode",
     )
+    parser.add_argument(
+        "-l",
+        "--legend",
+        action="store_true",
+        default=False,
+        help="show legend mode",
+    )
+    parser.add_argument(
+        "-s",
+        "--save",
+        action="store_true",
+        default=False,
+        help="automatic save",
+    )
     parser.add_argument("plots", nargs="+", choices=list(__PLOTS__.keys()))
     parameters = parser.parse_args()
     output_file: str = parameters.file
     verbose: bool = parameters.verbose
+    legend: bool = parameters.legend
+    save: bool = parameters.save
     plots: List[str] = parameters.plots
 
     # Load data
@@ -124,8 +140,7 @@ if __name__ == "__main__":
     ordered_methods = OrderedDict()
     for met in sorted(methods.keys()):
         ordered_methods[met] = methods[met]
-
-    if "Bee Search" not in ordered_methods:
+    if "bee search" not in ordered_methods:
         colors = pub.get_color_cycle()
         colors.append(colors.pop(0))
         pub.set_color_cycle(colors)
@@ -133,4 +148,13 @@ if __name__ == "__main__":
     for count, to_plot in enumerate(plots):
         ax = plt.subplot(1, len(plots), count + 1)
         __PLOTS__[to_plot](ax, ordered_methods)
-    plt.show()
+    # plt.legend()
+    # old = plt.gcf()
+    # new_fig = pub.extract_legend_as_figure(plt.gcf())
+    
+    if not legend:
+        plt.legend("", frameon=False)
+    if save:
+        pub.save_fig("./fig.png")
+    else:
+        plt.show()
