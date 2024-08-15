@@ -7,8 +7,9 @@ TEST_FILENAME="sygus_strings"
 TEST_FILE="./$DSL/$TEST_FILENAME.pickle"
 BASE_FILE=$TEST_FILE
 ALL_SEEDS="1 48 89498798 35132 849 98465 77984812 2798494 618421762 69871020" 
-METHODS="beap_search heap_search bee_search"
-SOLVERS="cutoff"
+ALL_SEEDS="77984812 98465" 
+METHODS="beap_search heap_search bee_search cd_search"
+SOLVERS="naive"
 # ============================================================
 # FLAGS =======================================================
 # ============================================================
