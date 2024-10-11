@@ -194,6 +194,6 @@ constraints = [
 
 
 def pretty_print_inputs(inputs: List[KarelWorld]) -> str:
-    world = inputs[0]
+    world = inputs
     world.show()
     return "shown"
