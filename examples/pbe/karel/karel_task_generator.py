@@ -107,7 +107,7 @@ if __name__ == "__main__":
                 assert (
                     i < 10000
                 ), f"Grammar is likely too shallow to only generate unique programs"
-
+            generated.add(program)
             task = Task(
                 tr,
                 PBE(
